@@ -28,20 +28,30 @@ import {
   arrayRemove 
 } from 'firebase/firestore';
 
+// --- SECURE CONFIGURATION ---
+// These values are loaded from Vercel Environment Variables
 const firebaseConfig = {
-  apiKey: "AIzaSyCM_GhAUBAQCdri9IM0G8tgRBPtgtg30Rc",
-  authDomain: "versabot-2710b.firebaseapp.com",
-  projectId: "versabot-2710b",
-  storageBucket: "versabot-2710b.firebasestorage.app",
-  messagingSenderId: "1083692717600",
-  appId: "1:1083692717600:web:81a98547cbe3c2a54c0e45"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN; // The secret password for your Google Sheet
 const APP_ID = 'versabot-pwa-v1';
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// Initialize Firebase safely
+let app, auth, db;
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} catch (e) {
+  console.error("Firebase Initialization Failed. Check Environment Variables.");
+}
 
 // --- Constants ---
 const DAILY_ROUTINE = [
@@ -120,6 +130,7 @@ function App() {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
+    if(!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
@@ -131,7 +142,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
 
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
 
@@ -140,6 +151,7 @@ function App() {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
         
+        // Ensure default URL is clean if missing or empty
         if (!data.gasUrl) {
            data.gasUrl = '';
         }
@@ -184,14 +196,24 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // Updated to RETURN data for immediate use
+  // Updated Fetcher: Appends the Secret Token
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return null;
+    
     try {
-      const res = await fetch(firestoreData.gasUrl);
+      // Securely append the token to the URL
+      const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
+      
+      const res = await fetch(secureUrl);
       const data = await res.json();
-      setLiveData(data); // Update UI
-      return data; // Return for chat
+      
+      if (data.error) {
+          console.error("API Error:", data.error);
+          return null;
+      }
+      
+      setLiveData(data);
+      return data;
     } catch (error) {
       console.error("GAS Fetch Error:", error);
       return null;
@@ -210,20 +232,17 @@ function App() {
     if (!user) { alert("Not logged in."); return; }
     const currentState = firestoreData.routine?.[taskId] || false;
     
-    // 1. Optimistic Update
     setFirestoreData(prev => ({
         ...prev,
         routine: { ...prev.routine, [taskId]: !currentState }
     }));
 
-    // 2. DB Update
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
         await updateDoc(docRef, {
             [`routine.${taskId}`]: !currentState
         });
     } catch(err) {
-        console.error(err);
         if (err.code === 'not-found' || err.message.includes("No document")) {
             await setDoc(docRef, {
                  routine: { [taskId]: !currentState }
@@ -292,7 +311,6 @@ function App() {
     }
   };
 
-  // UPDATED: Now fetches fresh data immediately before sending
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     
@@ -301,7 +319,6 @@ function App() {
     setChatInput('');
     setIsTyping(true);
 
-    // 1. Fetch Fresh Data (Real-time)
     let currentData = liveData;
     try {
         const freshData = await fetchLiveData();
@@ -321,9 +338,8 @@ function App() {
     `;
 
     try {
-      const apiKey = "AIzaSyB4Y-auFWVw2mcCkweDcRc3bUZIUdYwdEo";
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -349,6 +365,18 @@ function App() {
   }, [messages, activeTab]);
 
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
+
+  if (!firebaseConfig.apiKey) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
+              <div className="text-center">
+                  <h1 className="text-xl font-bold text-red-600 mb-2">Configuration Error</h1>
+                  <p className="text-red-500">Missing Environment Variables.</p>
+                  <p className="text-sm text-red-400 mt-2">Please add your VITE_FIREBASE_API_KEY etc. to Vercel.</p>
+              </div>
+          </div>
+      )
+  }
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
