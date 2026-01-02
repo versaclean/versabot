@@ -140,12 +140,10 @@ function App() {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
         
-        // Ensure default URL is clean if missing or empty
         if (!data.gasUrl) {
-           data.gasUrl = 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec';
+           data.gasUrl = '';
         }
 
-        // Reset routine if day changed
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => {
@@ -158,7 +156,6 @@ function App() {
           setFirestoreData(data);
         }
       } else {
-        // Initial DB Setup
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => {
           section.items.forEach(item => {
@@ -167,7 +164,7 @@ function App() {
         });
 
         const initialData = {
-          gasUrl: 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec',
+          gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           adhocTasks: []
@@ -187,14 +184,17 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
+  // Updated to RETURN data for immediate use
   const fetchLiveData = async () => {
-    if (!firestoreData.gasUrl) return;
+    if (!firestoreData.gasUrl) return null;
     try {
       const res = await fetch(firestoreData.gasUrl);
       const data = await res.json();
-      setLiveData(data);
+      setLiveData(data); // Update UI
+      return data; // Return for chat
     } catch (error) {
       console.error("GAS Fetch Error:", error);
+      return null;
     }
   };
 
@@ -216,7 +216,7 @@ function App() {
         routine: { ...prev.routine, [taskId]: !currentState }
     }));
 
-    // 2. DB Update (Using Correct Dot Notation for updateDoc)
+    // 2. DB Update
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
         await updateDoc(docRef, {
@@ -224,13 +224,10 @@ function App() {
         });
     } catch(err) {
         console.error(err);
-        // Fallback: If document doesn't exist or structure is broken
         if (err.code === 'not-found' || err.message.includes("No document")) {
             await setDoc(docRef, {
                  routine: { [taskId]: !currentState }
             }, { merge: true });
-        } else {
-            alert("Save failed: " + err.message);
         }
     }
   };
@@ -273,7 +270,6 @@ function App() {
     e.preventDefault();
     if (!user) return;
 
-    // Save current state to DB using updateDoc for nested fields
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
         await updateDoc(docRef, {
@@ -284,7 +280,6 @@ function App() {
         alert('Settings Saved Successfully');
         fetchLiveData();
     } catch(err) {
-        // Fallback for initialization
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
             targets: {
@@ -297,6 +292,7 @@ function App() {
     }
   };
 
+  // UPDATED: Now fetches fresh data immediately before sending
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     
@@ -305,7 +301,16 @@ function App() {
     setChatInput('');
     setIsTyping(true);
 
-    const contextData = liveData ? JSON.stringify(liveData) : "No live data available currently.";
+    // 1. Fetch Fresh Data (Real-time)
+    let currentData = liveData;
+    try {
+        const freshData = await fetchLiveData();
+        if (freshData) currentData = freshData;
+    } catch (e) {
+        console.log("Using cached data");
+    }
+
+    const contextData = currentData ? JSON.stringify(currentData) : "No live data available currently.";
     const contextTargets = JSON.stringify(firestoreData.targets);
     
     const systemPrompt = `
@@ -386,12 +391,12 @@ function App() {
               </h2>
               <ProgressBar 
                 label="Monthly Turnover" 
-                current={liveData?.turnoverMTD || 0} 
+                current={liveData?.financials?.turnover_mtd || 0} 
                 target={firestoreData.targets.monthly} 
               />
               <ProgressBar 
                 label="Weekly Turnover" 
-                current={liveData?.turnoverWTD || 0} 
+                current={liveData?.financials?.turnover_wtd || 0} 
                 target={firestoreData.targets.weekly} 
               />
             </div>
@@ -399,22 +404,22 @@ function App() {
             <div className="grid grid-cols-2 gap-3">
               <KPICard 
                 title="Turnover MTD" 
-                value={fmt(liveData?.turnoverMTD)} 
+                value={fmt(liveData?.financials?.turnover_mtd)} 
               />
               <KPICard 
                 title="Debtors Total" 
-                value={fmt(liveData?.debtors)} 
-                alert={(liveData?.debtors || 0) > 5000}
+                value={fmt(liveData?.financials?.debtors_total)} 
+                alert={(liveData?.financials?.debtors_total || 0) > 5000}
               />
               <KPICard 
-                title="New Clients" 
-                value={liveData?.newCustomers || 0} 
+                title="New Cust Value" 
+                value={fmt(liveData?.customers?.new_value_4w)} 
                 subtext="This Month"
               />
               <KPICard 
                 title="Churn" 
-                value={liveData?.churnCount || 0} 
-                alert={(liveData?.churnCount || 0) > 0}
+                value={liveData?.customers?.churn_count || 0} 
+                alert={(liveData?.customers?.churn_count || 0) > 0}
                 subtext="Clients Lost"
               />
             </div>
