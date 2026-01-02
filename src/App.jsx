@@ -244,6 +244,14 @@ function App() {
     if (firestoreData.gasUrl) fetchLiveData();
   }, [firestoreData.gasUrl]);
 
+  // --- Handlers ---
+
+  const handleSignOut = () => {
+    if (auth) {
+        signOut(auth).catch(e => console.error(e));
+    }
+  };
+
   const handleRoutineToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.routine?.[taskId] || false;
@@ -347,7 +355,7 @@ function App() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
-  // --- RENDERING SAFETY ---
+  // --- RENDERING ---
   
   if (!isConfigured) {
     return (
