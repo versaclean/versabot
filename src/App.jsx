@@ -82,10 +82,12 @@ const ProgressBar = ({ current, target, label }) => {
   return (
     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
       <div className="flex justify-between items-end mb-2">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
-        <span className="text-xs text-slate-500">
-          {percentage.toFixed(1)}% of {target.toLocaleString()}
-        </span>
+        <div className="flex justify-between w-full">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-xs text-slate-500">
+            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
+            </span>
+        </div>
       </div>
       <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
         <div 
@@ -103,10 +105,11 @@ function App() {
   const [loading, setLoading] = useState(true);
   
   const [liveData, setLiveData] = useState(null); 
+  // Initial state matches structure
   const [firestoreData, setFirestoreData] = useState({
-    gasUrl: '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)',
+    gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
-    routine: { lastReset: '' }, // Dynamic keys based on DAILY_ROUTINE
+    routine: { lastReset: '' }, 
     adhocTasks: []
   });
 
@@ -138,22 +141,25 @@ function App() {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
         
+        // Ensure default URL is clean if missing or empty
+        if (!data.gasUrl) {
+           data.gasUrl = '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)';
+        }
+
         // Reset routine if day changed
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
-          // Set all defined tasks to false
           DAILY_ROUTINE.forEach(section => {
             section.items.forEach(item => {
               resetRoutine[item.id] = false;
             });
           });
-          
           updateDoc(docRef, { routine: resetRoutine });
         } else {
           setFirestoreData(data);
         }
       } else {
-        // Initial setup
+        // Initial DB Setup
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => {
           section.items.forEach(item => {
@@ -163,7 +169,7 @@ function App() {
 
         const initialData = {
           gasUrl: '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)',
-          targets: { monthly: 0, weekly: 0 },
+          targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           adhocTasks: []
         };
@@ -181,16 +187,12 @@ function App() {
 
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return;
-    
     try {
-      console.log("Fetching from:", firestoreData.gasUrl);
       const res = await fetch(firestoreData.gasUrl);
       const data = await res.json();
-      console.log("Data received:", data);
       setLiveData(data);
     } catch (error) {
       console.error("GAS Fetch Error:", error);
-      // Don't clear data on error to prevent flickering if it's transient
     }
   };
 
@@ -200,16 +202,23 @@ function App() {
     }
   }, [firestoreData.gasUrl]);
 
+  // --- Handlers with Optimistic Updates ---
+
   const handleRoutineToggle = async (taskId) => {
     if (!user) return;
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    
-    // Toggle current state
     const currentState = firestoreData.routine?.[taskId] || false;
     
+    // 1. Update Screen Immediately (Optimistic)
+    setFirestoreData(prev => ({
+        ...prev,
+        routine: { ...prev.routine, [taskId]: !currentState }
+    }));
+
+    // 2. Update Database
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     await updateDoc(docRef, {
       [`routine.${taskId}`]: !currentState
-    });
+    }).catch(e => console.error(e));
   };
 
   const handleAddTask = async (e) => {
@@ -224,33 +233,45 @@ function App() {
         created: new Date().toISOString()
     };
 
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, {
-      adhocTasks: arrayUnion(newTask)
-    });
+    // 1. Update Screen Immediately
+    setFirestoreData(prev => ({
+        ...prev,
+        adhocTasks: [...prev.adhocTasks, newTask]
+    }));
     e.target.reset();
+
+    // 2. Update Database
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) }).catch(e => console.error(e));
   };
 
   const handleDeleteTask = async (task) => {
     if (!user) return;
+
+    // 1. Update Screen Immediately
+    setFirestoreData(prev => ({
+        ...prev,
+        adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id)
+    }));
+
+    // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, {
-      adhocTasks: arrayRemove(task)
-    });
+    await updateDoc(docRef, { adhocTasks: arrayRemove(task) }).catch(e => console.error(e));
   };
 
   const handleSettingsSave = async (e) => {
     e.preventDefault();
-    const formData = new FormData(e.target);
     if (!user) return;
 
+    // Save current state to DB
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     await updateDoc(docRef, {
-      gasUrl: formData.get('gasUrl'),
-      'targets.monthly': Number(formData.get('targetMonthly')),
-      'targets.weekly': Number(formData.get('targetWeekly')),
+      gasUrl: firestoreData.gasUrl,
+      'targets.monthly': Number(firestoreData.targets.monthly),
+      'targets.weekly': Number(firestoreData.targets.weekly),
     });
     alert('Settings Saved');
+    fetchLiveData();
   };
 
   const handleSendMessage = async () => {
@@ -268,12 +289,11 @@ function App() {
       You are versaBOT, a business assistant. 
       Current Business Data: ${contextData}.
       Targets: ${contextTargets}.
-      Answer concisely.
+      Answer concisely in GBP (£).
     `;
 
     try {
       const apiKey = "AIzaSyB4Y-auFWVw2mcCkweDcRc3bUZIUdYwdEo";
-      
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
         {
@@ -300,7 +320,6 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTab]);
 
-  // Currency Formatter
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
   if (loading) return (
@@ -488,8 +507,8 @@ function App() {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label>
                 <input 
-                  name="gasUrl"
-                  defaultValue={firestoreData.gasUrl}
+                  value={firestoreData.gasUrl}
+                  onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})}
                   placeholder="[https://script.google.com/](https://script.google.com/)..."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                 />
@@ -498,18 +517,18 @@ function App() {
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label>
                   <input 
-                    name="targetMonthly"
                     type="number"
-                    defaultValue={firestoreData.targets.monthly}
+                    value={firestoreData.targets.monthly}
+                    onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})}
                     className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label>
                   <input 
-                    name="targetWeekly"
                     type="number"
-                    defaultValue={firestoreData.targets.weekly}
+                    value={firestoreData.targets.weekly}
+                    onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})}
                     className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                   />
                 </div>
