@@ -105,7 +105,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   
   const [liveData, setLiveData] = useState(null); 
-  // Initial state matches structure
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
@@ -125,10 +124,7 @@ function App() {
       if (currentUser) {
         setUser(currentUser);
       } else {
-        signInAnonymously(auth).catch((error) => {
-            console.error("Auth Error:", error);
-            alert("Login Failed: " + error.message);
-        });
+        signInAnonymously(auth).catch((error) => console.error("Auth Error:", error));
       }
     });
     return () => unsubscribe();
@@ -146,7 +142,7 @@ function App() {
         
         // Ensure default URL is clean if missing or empty
         if (!data.gasUrl) {
-           data.gasUrl = '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)';
+           data.gasUrl = 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec';
         }
 
         // Reset routine if day changed
@@ -171,7 +167,7 @@ function App() {
         });
 
         const initialData = {
-          gasUrl: '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)',
+          gasUrl: 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec',
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           adhocTasks: []
@@ -182,9 +178,8 @@ function App() {
       setLoading(false);
     }, (err) => {
       console.error("Firestore Error:", err);
-      // Alerts user if permissions are wrong
       if(err.code === 'permission-denied') {
-          alert("Error: Database Permission Denied. Please fix Firestore Rules in Firebase Console (See Instructions).");
+          alert("Database Permission Denied. Please fix Firestore Rules.");
       }
       setLoading(false);
     });
@@ -209,26 +204,34 @@ function App() {
     }
   }, [firestoreData.gasUrl]);
 
-  // --- Handlers with Optimistic Updates ---
+  // --- Handlers ---
 
   const handleRoutineToggle = async (taskId) => {
     if (!user) { alert("Not logged in."); return; }
     const currentState = firestoreData.routine?.[taskId] || false;
     
-    // 1. Update Screen Immediately (Optimistic)
+    // 1. Optimistic Update
     setFirestoreData(prev => ({
         ...prev,
         routine: { ...prev.routine, [taskId]: !currentState }
     }));
 
-    // 2. Update Database
+    // 2. DB Update (Using Correct Dot Notation for updateDoc)
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
-        await setDoc(docRef, {
+        await updateDoc(docRef, {
             [`routine.${taskId}`]: !currentState
-        }, { merge: true });
+        });
     } catch(err) {
-        alert("Save failed: " + err.message);
+        console.error(err);
+        // Fallback: If document doesn't exist or structure is broken
+        if (err.code === 'not-found' || err.message.includes("No document")) {
+            await setDoc(docRef, {
+                 routine: { [taskId]: !currentState }
+            }, { merge: true });
+        } else {
+            alert("Save failed: " + err.message);
+        }
     }
   };
 
@@ -244,60 +247,53 @@ function App() {
         created: new Date().toISOString()
     };
 
-    // 1. Update Screen Immediately
     setFirestoreData(prev => ({
         ...prev,
         adhocTasks: [...prev.adhocTasks, newTask]
     }));
     e.target.reset();
 
-    // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try {
-        await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
-    } catch(err) {
-        alert("Add task failed: " + err.message);
-    }
+    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
   };
 
   const handleDeleteTask = async (task) => {
     if (!user) return;
 
-    // 1. Update Screen Immediately
     setFirestoreData(prev => ({
         ...prev,
         adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id)
     }));
 
-    // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try {
-        await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
-    } catch(err) {
-        alert("Delete failed: " + err.message);
-    }
+    await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
   };
 
   const handleSettingsSave = async (e) => {
     e.preventDefault();
-    if (!user) {
-        alert("Not logged in. Please wait.");
-        return;
-    }
+    if (!user) return;
 
-    // Save current state to DB
+    // Save current state to DB using updateDoc for nested fields
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
-        const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-        await setDoc(docRef, {
+        await updateDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
             'targets.monthly': Number(firestoreData.targets.monthly),
             'targets.weekly': Number(firestoreData.targets.weekly),
-        }, { merge: true });
-        
+        });
         alert('Settings Saved Successfully');
         fetchLiveData();
     } catch(err) {
-        alert("Save failed: " + err.message);
+        // Fallback for initialization
+        await setDoc(docRef, {
+            gasUrl: firestoreData.gasUrl,
+            targets: {
+                monthly: Number(firestoreData.targets.monthly),
+                weekly: Number(firestoreData.targets.weekly)
+            }
+        }, { merge: true });
+        alert('Settings Saved (New)');
+        fetchLiveData();
     }
   };
 
@@ -536,7 +532,7 @@ function App() {
                 <input 
                   value={firestoreData.gasUrl}
                   onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})}
-                  placeholder="[https://script.google.com/](https://script.google.com/)..."
+                  placeholder="https://script.google.com/..."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                 />
               </div>
