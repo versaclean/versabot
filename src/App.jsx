@@ -125,7 +125,10 @@ function App() {
       if (currentUser) {
         setUser(currentUser);
       } else {
-        signInAnonymously(auth).catch((error) => console.error("Auth Error:", error));
+        signInAnonymously(auth).catch((error) => {
+            console.error("Auth Error:", error);
+            alert("Login Failed: " + error.message);
+        });
       }
     });
     return () => unsubscribe();
@@ -179,6 +182,10 @@ function App() {
       setLoading(false);
     }, (err) => {
       console.error("Firestore Error:", err);
+      // Alerts user if permissions are wrong
+      if(err.code === 'permission-denied') {
+          alert("Error: Database Permission Denied. Please fix Firestore Rules in Firebase Console (See Instructions).");
+      }
       setLoading(false);
     });
 
@@ -205,7 +212,7 @@ function App() {
   // --- Handlers with Optimistic Updates ---
 
   const handleRoutineToggle = async (taskId) => {
-    if (!user) return;
+    if (!user) { alert("Not logged in."); return; }
     const currentState = firestoreData.routine?.[taskId] || false;
     
     // 1. Update Screen Immediately (Optimistic)
@@ -216,9 +223,13 @@ function App() {
 
     // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, {
-      [`routine.${taskId}`]: !currentState
-    }).catch(e => console.error(e));
+    try {
+        await setDoc(docRef, {
+            [`routine.${taskId}`]: !currentState
+        }, { merge: true });
+    } catch(err) {
+        alert("Save failed: " + err.message);
+    }
   };
 
   const handleAddTask = async (e) => {
@@ -242,7 +253,11 @@ function App() {
 
     // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) }).catch(e => console.error(e));
+    try {
+        await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
+    } catch(err) {
+        alert("Add task failed: " + err.message);
+    }
   };
 
   const handleDeleteTask = async (task) => {
@@ -256,22 +271,34 @@ function App() {
 
     // 2. Update Database
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayRemove(task) }).catch(e => console.error(e));
+    try {
+        await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
+    } catch(err) {
+        alert("Delete failed: " + err.message);
+    }
   };
 
   const handleSettingsSave = async (e) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+        alert("Not logged in. Please wait.");
+        return;
+    }
 
     // Save current state to DB
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, {
-      gasUrl: firestoreData.gasUrl,
-      'targets.monthly': Number(firestoreData.targets.monthly),
-      'targets.weekly': Number(firestoreData.targets.weekly),
-    });
-    alert('Settings Saved');
-    fetchLiveData();
+    try {
+        const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+        await setDoc(docRef, {
+            gasUrl: firestoreData.gasUrl,
+            'targets.monthly': Number(firestoreData.targets.monthly),
+            'targets.weekly': Number(firestoreData.targets.weekly),
+        }, { merge: true });
+        
+        alert('Settings Saved Successfully');
+        fetchLiveData();
+    } catch(err) {
+        alert("Save failed: " + err.message);
+    }
   };
 
   const handleSendMessage = async () => {
