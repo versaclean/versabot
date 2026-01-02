@@ -36,6 +36,8 @@ import {
   arrayRemove 
 } from 'firebase/firestore';
 
+// --- CONFIGURATION ---
+// These keys are loaded from Vercel Environment Variables
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -49,13 +51,23 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
+// Initialize Firebase safely (prevents white screen crash)
 let app, auth, db;
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (e) { console.error(e); }
+let initError = "";
 
+try {
+  // Only attempt init if keys exist
+  if (firebaseConfig.apiKey) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  }
+} catch (e) {
+  console.error("Firebase Init Error", e);
+  initError = e.message;
+}
+
+// --- CONSTANTS ---
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
@@ -163,13 +175,12 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
   
-  // Added "botInstructions" to state
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     adhocTasks: [],
-    botInstructions: '' // New Field for Memory
+    botInstructions: ''
   });
 
   const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
@@ -178,7 +189,11 @@ function App() {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    if(!auth) return;
+    // Safety check: if auth failed to init, stop loading so we can show error
+    if (!auth) {
+      setAuthLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
@@ -200,7 +215,7 @@ function App() {
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
           updateDoc(docRef, { routine: resetRoutine });
         } else {
-          setFirestoreData(prev => ({...prev, ...data})); // Merge to ensure new fields load
+          setFirestoreData(prev => ({...prev, ...data})); 
         }
       } else {
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
@@ -279,7 +294,6 @@ function App() {
         alert('Settings Saved');
         fetchLiveData();
     } catch(err) {
-        // Fallback for flat structure initialization if dots fail
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
             targets: firestoreData.targets,
@@ -303,7 +317,6 @@ function App() {
         if (freshData) currentData = freshData;
     } catch (e) {}
 
-    // INJECT MEMORY AND RAW DATA HERE
     const systemPrompt = `
       You are versaBOT, a business assistant.
       
@@ -313,7 +326,7 @@ function App() {
       LIVE FINANCIALS:
       ${JSON.stringify(currentData?.financials || {})}
       
-      RAW DATA / CONTEXT (From Chat_Data tab):
+      RAW DATA / CONTEXT:
       ${JSON.stringify(currentData?.raw_context || [])}
 
       Answer concisely in GBP (£).
@@ -341,9 +354,34 @@ function App() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
+  // --- SAFETY CHECKS (PREVENT WHITE SCREEN) ---
+  
+  // 1. Missing Vercel Env Vars
+  if (!firebaseConfig.apiKey) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-red-500 max-w-md w-full">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-slate-800 mb-2">Setup Required</h1>
+          <p className="text-slate-600 mb-4 text-sm">
+            The app cannot start because the security keys are missing.
+          </p>
+          <div className="bg-slate-100 p-3 rounded text-xs text-left font-mono mb-4">
+            VITE_FIREBASE_API_KEY: {firebaseConfig.apiKey ? 'OK' : 'MISSING'}
+          </div>
+          <p className="text-xs text-slate-500">Go to Vercel > Settings > Environment Variables and add your keys.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Initial Loading Spinner
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
+
+  // 3. User Not Logged In
   if (!user) return <LoginScreen />;
 
+  // 4. Main App
   return (
     <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900">
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-4 py-3 flex justify-between items-center shadow-sm">
