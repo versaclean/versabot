@@ -15,14 +15,15 @@ import {
   Mail,
   Lock,
   UserPlus,
-  LogIn
+  LogIn,
+  Brain
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   signOut
 } from 'firebase/auth';
 import { 
@@ -35,7 +36,6 @@ import {
   arrayRemove 
 } from 'firebase/firestore';
 
-// --- CONFIGURATION ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -54,11 +54,8 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
-} catch (e) {
-  console.error("Firebase Init Error", e);
-}
+} catch (e) { console.error(e); }
 
-// --- CONSTANTS ---
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
@@ -114,7 +111,6 @@ const ProgressBar = ({ current, target, label }) => {
   );
 };
 
-// --- LOGIN COMPONENT ---
 const LoginScreen = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -127,11 +123,8 @@ const LoginScreen = () => {
     setError('');
     setLoading(true);
     try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      if (isSignUp) await createUserWithEmailAndPassword(auth, email, password);
+      else await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       setError(err.message.replace('Firebase:', '').trim());
     } finally {
@@ -146,89 +139,44 @@ const LoginScreen = () => {
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">versaBOT</h1>
           <p className="text-slate-400 text-sm">Business Manager</p>
         </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg flex items-center gap-2">
-            <AlertCircle className="w-4 h-4" /> {error}
-          </div>
-        )}
-
+        {error && <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500 uppercase">Email</label>
-            <div className="relative">
-              <Mail className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
-              <input 
-                type="email" 
-                required
-                className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+            <div className="relative"><Mail className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="email" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)}/></div>
           </div>
-          
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500 uppercase">Password</label>
-            <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
-              <input 
-                type="password" 
-                required
-                className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+            <div className="relative"><Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="password" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}/></div>
           </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />)}
-            {isSignUp ? 'Create Account' : 'Sign In'}
-          </button>
+          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 disabled:opacity-50">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />)} {isSignUp ? 'Create Account' : 'Sign In'}</button>
         </form>
-
-        <button 
-          onClick={() => setIsSignUp(!isSignUp)}
-          className="w-full mt-4 text-xs text-slate-500 hover:text-blue-600"
-        >
-          {isSignUp ? "Already have an account? Sign In" : "Need an account? Create one"}
-        </button>
+        <button onClick={() => setIsSignUp(!isSignUp)} className="w-full mt-4 text-xs text-slate-500 hover:text-blue-600">{isSignUp ? "Already have an account? Sign In" : "Need an account? Create one"}</button>
       </div>
     </div>
   );
 };
 
-// --- MAIN APP ---
 function App() {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // Separate loading for Auth
+  const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Data State
   const [liveData, setLiveData] = useState(null); 
+  
+  // Added "botInstructions" to state
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
-    adhocTasks: []
+    adhocTasks: [],
+    botInstructions: '' // New Field for Memory
   });
 
-  // Chat State
-  const [messages, setMessages] = useState([
-    { role: 'system', text: 'Hello! I am ready to analyze your business data.' }
-  ]);
+  const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
 
-  // 1. Auth Listener
   useEffect(() => {
     if(!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -238,98 +186,61 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Data Sync (Only when user is logged in)
   useEffect(() => {
     if (!user || !db) return;
-
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-
     const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
+        if (!data.gasUrl) data.gasUrl = '';
         
         if (data.routine?.lastReset !== today) {
-          // Reset routine locally and update
           const resetRoutine = { lastReset: today };
-          DAILY_ROUTINE.forEach(section => {
-            section.items.forEach(item => resetRoutine[item.id] = false);
-          });
+          DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
           updateDoc(docRef, { routine: resetRoutine });
         } else {
-          setFirestoreData(data);
+          setFirestoreData(prev => ({...prev, ...data})); // Merge to ensure new fields load
         }
       } else {
-        // Init new user data
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
-        DAILY_ROUTINE.forEach(section => {
-          section.items.forEach(item => initialRoutine[item.id] = false);
-        });
-
+        DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         const initialData = {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
-          adhocTasks: []
+          adhocTasks: [],
+          botInstructions: ''
         };
         setDoc(docRef, initialData);
         setFirestoreData(initialData);
       }
-    }, (err) => {
-      console.error("Firestore Error:", err);
     });
-
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // 3. Fetch GAS Data
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return null;
     try {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
-      if (data.error) {
-          console.error("API Error:", data.error);
-          return null;
-      }
-      setLiveData(data);
+      if (!data.error) setLiveData(data);
       return data;
-    } catch (error) {
-      console.error("Fetch Error:", error);
-      return null;
-    }
+    } catch (error) { return null; }
   };
 
   useEffect(() => {
     if (firestoreData.gasUrl) fetchLiveData();
   }, [firestoreData.gasUrl]);
 
-  // --- Handlers ---
-
-  const handleSignOut = () => {
-    signOut(auth);
-  };
-
   const handleRoutineToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.routine?.[taskId] || false;
-    
-    // Optimistic
-    setFirestoreData(prev => ({
-        ...prev,
-        routine: { ...prev.routine, [taskId]: !currentState }
-    }));
-
+    setFirestoreData(prev => ({ ...prev, routine: { ...prev.routine, [taskId]: !currentState } }));
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try {
-        await updateDoc(docRef, { [`routine.${taskId}`]: !currentState });
-    } catch(err) {
-        // Fallback create
-        if (err.code === 'not-found' || err.message.includes("No document")) {
-            await setDoc(docRef, { routine: { [taskId]: !currentState } }, { merge: true });
-        }
-    }
+    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } 
+    catch(err) { if (err.code === 'not-found') await setDoc(docRef, { routine: { [taskId]: !currentState } }, { merge: true }); }
   };
 
   const handleAddTask = async (e) => {
@@ -337,12 +248,9 @@ function App() {
     const formData = new FormData(e.target);
     const text = formData.get('taskText');
     if (!text || !user) return;
-
     const newTask = { id: Date.now(), text: text, created: new Date().toISOString() };
-
     setFirestoreData(prev => ({ ...prev, adhocTasks: [...prev.adhocTasks, newTask] }));
     e.target.reset();
-
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
   };
@@ -357,23 +265,25 @@ function App() {
   const handleSettingsSave = async (e) => {
     e.preventDefault();
     if (!user) return;
-
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    
+    const updates = {
+        gasUrl: firestoreData.gasUrl,
+        'targets.monthly': Number(firestoreData.targets.monthly),
+        'targets.weekly': Number(firestoreData.targets.weekly),
+        botInstructions: firestoreData.botInstructions || ''
+    };
+
     try {
-        await updateDoc(docRef, {
-            gasUrl: firestoreData.gasUrl,
-            'targets.monthly': Number(firestoreData.targets.monthly),
-            'targets.weekly': Number(firestoreData.targets.weekly),
-        });
+        await updateDoc(docRef, updates);
         alert('Settings Saved');
         fetchLiveData();
     } catch(err) {
+        // Fallback for flat structure initialization if dots fail
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
-            targets: {
-                monthly: Number(firestoreData.targets.monthly),
-                weekly: Number(firestoreData.targets.weekly)
-            }
+            targets: firestoreData.targets,
+            botInstructions: firestoreData.botInstructions || ''
         }, { merge: true });
         alert('Settings Saved');
         fetchLiveData();
@@ -391,12 +301,23 @@ function App() {
     try {
         const freshData = await fetchLiveData();
         if (freshData) currentData = freshData;
-    } catch (e) { console.log("Using cache"); }
+    } catch (e) {}
 
-    const contextData = currentData ? JSON.stringify(currentData) : "No live data.";
-    const contextTargets = JSON.stringify(firestoreData.targets);
-    
-    const systemPrompt = `You are versaBOT. Data: ${contextData}. Targets: ${contextTargets}. Answer concisely in GBP (£).`;
+    // INJECT MEMORY AND RAW DATA HERE
+    const systemPrompt = `
+      You are versaBOT, a business assistant.
+      
+      USER DEFINED RULES (Always follow these): 
+      ${firestoreData.botInstructions || "No custom rules set."}
+
+      LIVE FINANCIALS:
+      ${JSON.stringify(currentData?.financials || {})}
+      
+      RAW DATA / CONTEXT (From Chat_Data tab):
+      ${JSON.stringify(currentData?.raw_context || [])}
+
+      Answer concisely in GBP (£).
+    `;
 
     try {
       const response = await fetch(
@@ -408,99 +329,45 @@ function App() {
         }
       );
       const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Error.";
+      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, error.";
       setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Connection error." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Connection Error." }]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeTab]);
-
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
-  // --- RENDERING ---
-
-  if (authLoading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-    </div>
-  );
-
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
   if (!user) return <LoginScreen />;
 
   return (
     <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900">
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-4 py-3 flex justify-between items-center shadow-sm">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-          versaBOT
-        </h1>
+        <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">versaBOT</h1>
         <div className="flex gap-2">
-            {activeTab === 'dashboard' && (
-            <button onClick={fetchLiveData} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
-                <RefreshCw className="w-4 h-4 text-slate-600" />
-            </button>
-            )}
-            <button onClick={handleSignOut} className="p-2 bg-slate-100 rounded-full hover:bg-red-50 text-slate-600 hover:text-red-500">
-                <LogOut className="w-4 h-4" />
-            </button>
+            {activeTab === 'dashboard' && <button onClick={fetchLiveData} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><RefreshCw className="w-4 h-4 text-slate-600" /></button>}
+            <button onClick={handleSignOut} className="p-2 bg-slate-100 rounded-full hover:bg-red-50 text-slate-600 hover:text-red-500"><LogOut className="w-4 h-4" /></button>
         </div>
       </div>
 
       <main className="p-4 max-w-2xl mx-auto">
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {!firestoreData.gasUrl && (
-                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
-                    <div>
-                        <h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3>
-                        <p className="text-xs text-yellow-700 mt-1">Please configure your Data Source URL in settings.</p>
-                    </div>
-                </div>
-            )}
-
+            {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div>
-              <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-600" /> Performance
-              </h2>
-              <ProgressBar 
-                label="Monthly Turnover" 
-                current={liveData?.financials?.turnover_mtd || 0} 
-                target={firestoreData.targets.monthly} 
-              />
-              <ProgressBar 
-                label="Weekly Turnover" 
-                current={liveData?.financials?.turnover_wtd || 0} 
-                target={firestoreData.targets.weekly} 
-              />
+              <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2>
+              <ProgressBar label="Monthly Turnover" current={liveData?.financials?.turnover_mtd || 0} target={firestoreData.targets.monthly} />
+              <ProgressBar label="Weekly Turnover" current={liveData?.financials?.turnover_wtd || 0} target={firestoreData.targets.weekly} />
             </div>
-
             <div className="grid grid-cols-2 gap-3">
-              <KPICard 
-                title="Turnover MTD" 
-                value={fmt(liveData?.financials?.turnover_mtd)} 
-              />
-              <KPICard 
-                title="Debtors Total" 
-                value={fmt(liveData?.financials?.debtors_total)} 
-                alert={(liveData?.financials?.debtors_total || 0) > 5000}
-              />
-              <KPICard 
-                title="New Cust Value" 
-                value={fmt(liveData?.customers?.new_value_4w)} 
-                subtext="This Month"
-              />
-              <KPICard 
-                title="Churn" 
-                value={liveData?.customers?.churn_count || 0} 
-                alert={(liveData?.customers?.churn_count || 0) > 0}
-                subtext="Clients Lost"
-              />
+              <KPICard title="Turnover MTD" value={fmt(liveData?.financials?.turnover_mtd)} />
+              <KPICard title="Debtors Total" value={fmt(liveData?.financials?.debtors_total)} alert={(liveData?.financials?.debtors_total || 0) > 5000} />
+              <KPICard title="New Cust Value" value={fmt(liveData?.customers?.new_value_4w)} subtext="This Month" />
+              <KPICard title="Churn" value={liveData?.customers?.churn_count || 0} alert={(liveData?.customers?.churn_count || 0) > 0} subtext="Clients Lost" />
             </div>
           </div>
         )}
@@ -510,39 +377,15 @@ function App() {
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                    m.role === 'user' 
-                      ? 'bg-blue-600 text-white rounded-br-none' 
-                      : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'
-                  }`}>
-                    {m.text}
-                  </div>
+                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'}`}>{m.text}</div>
                 </div>
               ))}
-              {isTyping && (
-                <div className="flex justify-start">
-                  <div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none">
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                  </div>
-                </div>
-              )}
+              {isTyping && <div className="flex justify-start"><div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div></div>}
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
-              <input 
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Ask about your data..."
-                className="flex-1 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-              <button 
-                onClick={handleSendMessage}
-                disabled={!chatInput.trim()}
-                className="p-3 bg-blue-600 text-white rounded-xl disabled:opacity-50"
-              >
-                <Send className="w-5 h-5" />
-              </button>
+              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your data..." className="flex-1 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+              <button onClick={handleSendMessage} disabled={!chatInput.trim()} className="p-3 bg-blue-600 text-white rounded-xl disabled:opacity-50"><Send className="w-5 h-5" /></button>
             </div>
           </div>
         )}
@@ -556,15 +399,7 @@ function App() {
                   {section.items.map((item) => {
                     const isDone = firestoreData.routine?.[item.id] || false;
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleRoutineToggle(item.id)}
-                        className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${
-                          isDone
-                            ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' 
-                            : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
+                      <button key={item.id} onClick={() => handleRoutineToggle(item.id)} className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${isDone ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}>
                         <span className="font-medium text-sm">{item.label}</span>
                         {isDone ? <CheckSquare className="w-5 h-5 opacity-50" /> : <div className="w-5 h-5 rounded border border-slate-300" />}
                       </button>
@@ -573,35 +408,14 @@ function App() {
                 </div>
               </div>
             ))}
-
             <div>
               <h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Ad-hoc Tasks</h3>
-              <form onSubmit={handleAddTask} className="flex gap-2 mb-4">
-                <input 
-                  name="taskText"
-                  placeholder="Add new task..."
-                  className="flex-1 p-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button type="submit" className="bg-blue-600 text-white p-2 rounded-lg">
-                  <Plus className="w-5 h-5" />
-                </button>
-              </form>
-              
+              <form onSubmit={handleAddTask} className="flex gap-2 mb-4"><input name="taskText" placeholder="Add new task..." className="flex-1 p-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /><button type="submit" className="bg-blue-600 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button></form>
               <div className="space-y-2">
                 {firestoreData.adhocTasks.map((task) => (
-                  <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm group">
-                    <span className="text-sm text-slate-700">{task.text}</span>
-                    <button 
-                      onClick={() => handleDeleteTask(task)}
-                      className="text-slate-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  <div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm group"><span className="text-sm text-slate-700">{task.text}</span><button onClick={() => handleDeleteTask(task)} className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button></div>
                 ))}
-                {firestoreData.adhocTasks.length === 0 && (
-                  <p className="text-center text-slate-400 text-xs py-4">No pending tasks</p>
-                )}
+                {firestoreData.adhocTasks.length === 0 && <p className="text-center text-slate-400 text-xs py-4">No pending tasks</p>}
               </div>
             </div>
           </div>
@@ -613,55 +427,33 @@ function App() {
             <form onSubmit={handleSettingsSave} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label>
-                <input 
-                  value={firestoreData.gasUrl}
-                  onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})}
-                  placeholder="https://script.google.com/..."
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm"
-                />
+                <input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label>
-                  <input 
-                    type="number"
-                    value={firestoreData.targets.monthly}
-                    onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})}
-                    className="w-full p-3 rounded-lg border border-slate-200 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label>
-                  <input 
-                    type="number"
-                    value={firestoreData.targets.weekly}
-                    onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})}
-                    className="w-full p-3 rounded-lg border border-slate-200 text-sm"
-                  />
-                </div>
+                <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
+                <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               </div>
-              <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">
-                Save Settings
-              </button>
+              
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
+                <textarea 
+                  value={firestoreData.botInstructions} 
+                  onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
+                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">These rules are saved permanently and sent to the bot with every message.</p>
+              </div>
+
+              <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
           </div>
         )}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
-        {[
-          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'chat', icon: MessageSquare, label: 'Chat' },
-          { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
-          { id: 'settings', icon: Settings, label: 'Settings' }
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center gap-1 p-2 transition-colors ${
-              activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
+        {[{ id: 'dashboard', icon: LayoutDashboard, label: 'Home' }, { id: 'chat', icon: MessageSquare, label: 'Chat' }, { id: 'tasks', icon: CheckSquare, label: 'Tasks' }, { id: 'settings', icon: Settings, label: 'Settings' }].map((item) => (
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
