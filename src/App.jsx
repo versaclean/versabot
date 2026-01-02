@@ -15,8 +15,7 @@ import {
   Mail,
   Lock,
   UserPlus,
-  LogIn,
-  Brain
+  LogIn
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -37,7 +36,6 @@ import {
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
-// These keys are loaded from Vercel Environment Variables
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -51,20 +49,19 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
-// Initialize Firebase safely (prevents white screen crash)
+// Initialize Firebase
 let app, auth, db;
-let initError = "";
+let isConfigured = false;
 
-try {
-  // Only attempt init if keys exist
-  if (firebaseConfig.apiKey) {
+if (firebaseConfig.apiKey) {
+  try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+    isConfigured = true;
+  } catch (e) {
+    console.error("Firebase Init Error", e);
   }
-} catch (e) {
-  console.error("Firebase Init Error", e);
-  initError = e.message;
 }
 
 // --- CONSTANTS ---
@@ -134,6 +131,7 @@ const LoginScreen = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
+    if (!auth) { setError("App not configured"); return; }
     try {
       if (isSignUp) await createUserWithEmailAndPassword(auth, email, password);
       else await signInWithEmailAndPassword(auth, email, password);
@@ -174,7 +172,6 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
-  
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
@@ -189,8 +186,7 @@ function App() {
   const chatEndRef = useRef(null);
 
   useEffect(() => {
-    // Safety check: if auth failed to init, stop loading so we can show error
-    if (!auth) {
+    if (!isConfigured || !auth) {
       setAuthLoading(false);
       return;
     }
@@ -209,7 +205,6 @@ function App() {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
         if (!data.gasUrl) data.gasUrl = '';
-        
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -281,14 +276,12 @@ function App() {
     e.preventDefault();
     if (!user) return;
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
         botInstructions: firestoreData.botInstructions || ''
     };
-
     try {
         await updateDoc(docRef, updates);
         alert('Settings Saved');
@@ -354,34 +347,28 @@ function App() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
-  // --- SAFETY CHECKS (PREVENT WHITE SCREEN) ---
+  // --- RENDERING SAFETY ---
   
-  // 1. Missing Vercel Env Vars
-  if (!firebaseConfig.apiKey) {
+  if (!isConfigured) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
         <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-red-500 max-w-md w-full">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-slate-800 mb-2">Setup Required</h1>
           <p className="text-slate-600 mb-4 text-sm">
-            The app cannot start because the security keys are missing.
+            The app cannot start because the Environment Variables are missing in Vercel.
           </p>
-          <div className="bg-slate-100 p-3 rounded text-xs text-left font-mono mb-4">
+          <div className="bg-slate-100 p-3 rounded text-xs text-left font-mono mb-4 text-slate-500">
             VITE_FIREBASE_API_KEY: {firebaseConfig.apiKey ? 'OK' : 'MISSING'}
           </div>
-          <p className="text-xs text-slate-500">Go to Vercel > Settings > Environment Variables and add your keys.</p>
         </div>
       </div>
     );
   }
 
-  // 2. Initial Loading Spinner
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
-
-  // 3. User Not Logged In
   if (!user) return <LoginScreen />;
 
-  // 4. Main App
   return (
     <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900">
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-4 py-3 flex justify-between items-center shadow-sm">
@@ -473,14 +460,13 @@ function App() {
               </div>
               
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1">Bot Instructions (Memory)</label>
                 <textarea 
                   value={firestoreData.botInstructions} 
                   onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
-                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
+                  placeholder="e.g., Active customers have 'Live' in Column C."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">These rules are saved permanently and sent to the bot with every message.</p>
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
