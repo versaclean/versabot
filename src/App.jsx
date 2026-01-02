@@ -10,13 +10,20 @@ import {
   RefreshCw,
   Loader2,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  LogOut,
+  Mail,
+  Lock,
+  UserPlus,
+  LogIn
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -28,8 +35,7 @@ import {
   arrayRemove 
 } from 'firebase/firestore';
 
-// --- SECURE CONFIGURATION ---
-// These values are loaded from Vercel Environment Variables
+// --- CONFIGURATION ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -40,20 +46,19 @@ const firebaseConfig = {
 };
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN; // The secret password for your Google Sheet
+const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
-// Initialize Firebase safely
 let app, auth, db;
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
 } catch (e) {
-  console.error("Firebase Initialization Failed. Check Environment Variables.");
+  console.error("Firebase Init Error", e);
 }
 
-// --- Constants ---
+// --- CONSTANTS ---
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
@@ -109,11 +114,104 @@ const ProgressBar = ({ current, target, label }) => {
   );
 };
 
+// --- LOGIN COMPONENT ---
+const LoginScreen = () => {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err) {
+      setError(err.message.replace('Firebase:', '').trim());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm border border-slate-100">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">versaBOT</h1>
+          <p className="text-slate-400 text-sm">Business Manager</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" /> {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500 uppercase">Email</label>
+            <div className="relative">
+              <Mail className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
+              <input 
+                type="email" 
+                required
+                className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500 uppercase">Password</label>
+            <div className="relative">
+              <Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
+              <input 
+                type="password" 
+                required
+                className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />)}
+            {isSignUp ? 'Create Account' : 'Sign In'}
+          </button>
+        </form>
+
+        <button 
+          onClick={() => setIsSignUp(!isSignUp)}
+          className="w-full mt-4 text-xs text-slate-500 hover:text-blue-600"
+        >
+          {isSignUp ? "Already have an account? Sign In" : "Need an account? Create one"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- MAIN APP ---
 function App() {
   const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // Separate loading for Auth
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [loading, setLoading] = useState(true);
   
+  // Data State
   const [liveData, setLiveData] = useState(null); 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -122,6 +220,7 @@ function App() {
     adhocTasks: []
   });
 
+  // Chat State
   const [messages, setMessages] = useState([
     { role: 'system', text: 'Hello! I am ready to analyze your business data.' }
   ]);
@@ -129,18 +228,17 @@ function App() {
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
 
+  // 1. Auth Listener
   useEffect(() => {
     if(!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        signInAnonymously(auth).catch((error) => console.error("Auth Error:", error));
-      }
+      setUser(currentUser);
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
+  // 2. Data Sync (Only when user is logged in)
   useEffect(() => {
     if (!user || !db) return;
 
@@ -151,28 +249,21 @@ function App() {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
         
-        // Ensure default URL is clean if missing or empty
-        if (!data.gasUrl) {
-           data.gasUrl = '';
-        }
-
         if (data.routine?.lastReset !== today) {
+          // Reset routine locally and update
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => {
-            section.items.forEach(item => {
-              resetRoutine[item.id] = false;
-            });
+            section.items.forEach(item => resetRoutine[item.id] = false);
           });
           updateDoc(docRef, { routine: resetRoutine });
         } else {
           setFirestoreData(data);
         }
       } else {
+        // Init new user data
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => {
-          section.items.forEach(item => {
-            initialRoutine[item.id] = false;
-          });
+          section.items.forEach(item => initialRoutine[item.id] = false);
         });
 
         const initialData = {
@@ -184,54 +275,47 @@ function App() {
         setDoc(docRef, initialData);
         setFirestoreData(initialData);
       }
-      setLoading(false);
     }, (err) => {
       console.error("Firestore Error:", err);
-      if(err.code === 'permission-denied') {
-          alert("Database Permission Denied. Please fix Firestore Rules.");
-      }
-      setLoading(false);
     });
 
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // Updated Fetcher: Appends the Secret Token
+  // 3. Fetch GAS Data
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return null;
-    
     try {
-      // Securely append the token to the URL
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
-      
       const res = await fetch(secureUrl);
       const data = await res.json();
-      
       if (data.error) {
           console.error("API Error:", data.error);
           return null;
       }
-      
       setLiveData(data);
       return data;
     } catch (error) {
-      console.error("GAS Fetch Error:", error);
+      console.error("Fetch Error:", error);
       return null;
     }
   };
 
   useEffect(() => {
-    if (firestoreData.gasUrl) {
-      fetchLiveData();
-    }
+    if (firestoreData.gasUrl) fetchLiveData();
   }, [firestoreData.gasUrl]);
 
   // --- Handlers ---
 
+  const handleSignOut = () => {
+    signOut(auth);
+  };
+
   const handleRoutineToggle = async (taskId) => {
-    if (!user) { alert("Not logged in."); return; }
+    if (!user) return;
     const currentState = firestoreData.routine?.[taskId] || false;
     
+    // Optimistic
     setFirestoreData(prev => ({
         ...prev,
         routine: { ...prev.routine, [taskId]: !currentState }
@@ -239,14 +323,11 @@ function App() {
 
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try {
-        await updateDoc(docRef, {
-            [`routine.${taskId}`]: !currentState
-        });
+        await updateDoc(docRef, { [`routine.${taskId}`]: !currentState });
     } catch(err) {
+        // Fallback create
         if (err.code === 'not-found' || err.message.includes("No document")) {
-            await setDoc(docRef, {
-                 routine: { [taskId]: !currentState }
-            }, { merge: true });
+            await setDoc(docRef, { routine: { [taskId]: !currentState } }, { merge: true });
         }
     }
   };
@@ -257,16 +338,9 @@ function App() {
     const text = formData.get('taskText');
     if (!text || !user) return;
 
-    const newTask = {
-        id: Date.now(),
-        text: text,
-        created: new Date().toISOString()
-    };
+    const newTask = { id: Date.now(), text: text, created: new Date().toISOString() };
 
-    setFirestoreData(prev => ({
-        ...prev,
-        adhocTasks: [...prev.adhocTasks, newTask]
-    }));
+    setFirestoreData(prev => ({ ...prev, adhocTasks: [...prev.adhocTasks, newTask] }));
     e.target.reset();
 
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
@@ -275,12 +349,7 @@ function App() {
 
   const handleDeleteTask = async (task) => {
     if (!user) return;
-
-    setFirestoreData(prev => ({
-        ...prev,
-        adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id)
-    }));
-
+    setFirestoreData(prev => ({ ...prev, adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id) }));
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
   };
@@ -296,7 +365,7 @@ function App() {
             'targets.monthly': Number(firestoreData.targets.monthly),
             'targets.weekly': Number(firestoreData.targets.weekly),
         });
-        alert('Settings Saved Successfully');
+        alert('Settings Saved');
         fetchLiveData();
     } catch(err) {
         await setDoc(docRef, {
@@ -306,14 +375,13 @@ function App() {
                 weekly: Number(firestoreData.targets.weekly)
             }
         }, { merge: true });
-        alert('Settings Saved (New)');
+        alert('Settings Saved');
         fetchLiveData();
     }
   };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
-    
     const userMsg = { role: 'user', text: chatInput };
     setMessages(prev => [...prev, userMsg]);
     setChatInput('');
@@ -323,19 +391,12 @@ function App() {
     try {
         const freshData = await fetchLiveData();
         if (freshData) currentData = freshData;
-    } catch (e) {
-        console.log("Using cached data");
-    }
+    } catch (e) { console.log("Using cache"); }
 
-    const contextData = currentData ? JSON.stringify(currentData) : "No live data available currently.";
+    const contextData = currentData ? JSON.stringify(currentData) : "No live data.";
     const contextTargets = JSON.stringify(firestoreData.targets);
     
-    const systemPrompt = `
-      You are versaBOT, a business assistant. 
-      Current Business Data: ${contextData}.
-      Targets: ${contextTargets}.
-      Answer concisely in GBP (£).
-    `;
+    const systemPrompt = `You are versaBOT. Data: ${contextData}. Targets: ${contextTargets}. Answer concisely in GBP (£).`;
 
     try {
       const response = await fetch(
@@ -343,18 +404,14 @@ function App() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }]
-          })
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] })
         }
       );
-      
       const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that.";
+      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Error.";
       setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
     } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Error connecting to AI service." }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Connection error." }]);
     } finally {
       setIsTyping(false);
     }
@@ -366,26 +423,15 @@ function App() {
 
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
-  if (!firebaseConfig.apiKey) {
-      return (
-          <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
-              <div className="text-center">
-                  <h1 className="text-xl font-bold text-red-600 mb-2">Configuration Error</h1>
-                  <p className="text-red-500">Missing Environment Variables.</p>
-                  <p className="text-sm text-red-400 mt-2">Please add your VITE_FIREBASE_API_KEY etc. to Vercel.</p>
-              </div>
-          </div>
-      )
-  }
+  // --- RENDERING ---
 
-  if (loading) return (
+  if (authLoading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto mb-4" />
-        <p className="text-slate-500 font-medium">Booting versaBOT...</p>
-      </div>
+      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
     </div>
   );
+
+  if (!user) return <LoginScreen />;
 
   return (
     <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900">
@@ -393,11 +439,16 @@ function App() {
         <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
           versaBOT
         </h1>
-        {activeTab === 'dashboard' && (
-          <button onClick={fetchLiveData} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
-            <RefreshCw className="w-4 h-4 text-slate-600" />
-          </button>
-        )}
+        <div className="flex gap-2">
+            {activeTab === 'dashboard' && (
+            <button onClick={fetchLiveData} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+                <RefreshCw className="w-4 h-4 text-slate-600" />
+            </button>
+            )}
+            <button onClick={handleSignOut} className="p-2 bg-slate-100 rounded-full hover:bg-red-50 text-slate-600 hover:text-red-500">
+                <LogOut className="w-4 h-4" />
+            </button>
+        </div>
       </div>
 
       <main className="p-4 max-w-2xl mx-auto">
@@ -408,7 +459,7 @@ function App() {
                     <AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" />
                     <div>
                         <h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3>
-                        <p className="text-xs text-yellow-700 mt-1">Please configure your Data Source URL in settings to see live metrics.</p>
+                        <p className="text-xs text-yellow-700 mt-1">Please configure your Data Source URL in settings.</p>
                     </div>
                 </div>
             )}
