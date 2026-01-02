@@ -80,7 +80,7 @@ function App() {
   
   const [liveData, setLiveData] = useState(null); 
   const [firestoreData, setFirestoreData] = useState({
-    gasUrl: 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec',
+    gasUrl: '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { morning: false, midday: false, evening: false, lastReset: '' },
     adhocTasks: []
@@ -115,7 +115,7 @@ function App() {
         const today = new Date().toISOString().split('T')[0];
         
         if (!data.gasUrl) {
-            data.gasUrl = 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec';
+            data.gasUrl = '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)';
         }
 
         if (data.routine?.lastReset !== today) {
@@ -130,7 +130,7 @@ function App() {
         }
       } else {
         const initialData = {
-          gasUrl: 'https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec',
+          gasUrl: '[https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec](https://script.google.com/macros/s/AKfycbxXfk5GEP75eDjI51QSCB3kjBUllTAQjM3qs64lsPYORoco3ztrKuYe6q-TLy7Dd-aooA/exec)',
           targets: { monthly: 0, weekly: 0 },
           routine: { 
             morning: false, 
@@ -449,7 +449,7 @@ function App() {
                 <input 
                   name="gasUrl"
                   defaultValue={firestoreData.gasUrl}
-                  placeholder="https://script.google.com/..."
+                  placeholder="[https://script.google.com/](https://script.google.com/)..."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                 />
               </div>
