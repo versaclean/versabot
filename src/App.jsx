@@ -20,7 +20,9 @@ import {
   Cpu,
   Database,
   Video,
-  Target
+  Instagram,
+  Facebook,
+  Smartphone
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -70,64 +72,85 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
+
+// 1. DAILY ROUTINE (Resets every morning)
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
     items: [
-      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
-      { id: 'm_team', label: 'Go see team (get photo/video)' }
+      { id: 'm_texts', label: 'Check texts (skips/pricing)' },
+      { id: 'm_stories', label: 'IG Story: Van Arrival / Coffee (Casual)' } // Added IG Story
     ]
   },
   {
     title: '☕ Midday Check-in',
     items: [
       { id: 'mid_texts', label: 'Check texts for updates' },
-      { id: 'mid_va', label: 'Check items from VA' }
+      { id: 'mid_stories', label: 'IG Story: Street Signs / Behind Scenes' } // Added IG Story
     ]
   },
   {
     title: '🌙 Close Down',
     items: [
+      { id: 'close_fb', label: 'Post to FB Page (Mirror IG Feed/Reel)' }, // Added FB Page
       { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' }
     ]
   }
 ];
 
-const MARKETING_TASKS = [
+// 2. WEEKLY MARKETING (Resets every Sunday)
+const MARKETING_STRATEGY = [
   {
-    id: 'vid_team',
-    title: 'The Team Arrival',
-    instruction: 'Start filming inside the van. Drive slowly up the street and pan to your team member already working.',
-    platform: 'Facebook / IG Stories',
-    why: 'Shows scale and professional branding. Proves you aren\'t a "one-man-band."'
+    title: 'TikTok (Mon-Fri)',
+    icon: Smartphone,
+    color: 'text-pink-600',
+    bg: 'bg-pink-50',
+    instruction: 'Focus on "The Hook" & Odd Jobs. Local signals matter.',
+    items: [
+      { id: 'tt_1', label: 'TikTok #1' },
+      { id: 'tt_2', label: 'TikTok #2' },
+      { id: 'tt_3', label: 'TikTok #3' },
+      { id: 'tt_4', label: 'TikTok #4' },
+      { id: 'tt_5', label: 'TikTok #5' }
+    ]
   },
   {
-    id: 'vid_squeegee',
-    title: 'The Squeegee Close-up',
-    instruction: 'Phone 6 inches from the glass. Capture the "slice" of the water leaving the window.',
-    platform: 'TikTok / Reels',
-    why: 'The ASMR/Satisfying hook. Primary way to get new eyes on the business.'
+    title: 'IG Reels (Mon-Fri)',
+    icon: Instagram,
+    color: 'text-purple-600',
+    bg: 'bg-purple-50',
+    instruction: 'Repurpose TikToks but use IG native fonts & trending audio.',
+    items: [
+      { id: 'reel_1', label: 'Reel #1' },
+      { id: 'reel_2', label: 'Reel #2' },
+      { id: 'reel_3', label: 'Reel #3' },
+      { id: 'reel_4', label: 'Reel #4' },
+      { id: 'reel_5', label: 'Reel #5' }
+    ]
   },
   {
-    id: 'vid_oddjob',
-    title: 'The "Odd Job"',
-    instruction: 'Clean a shop sign, a bus stop, or a dirty postbox (even for free).',
-    platform: 'TikTok / Reels',
-    why: 'Unique content breaks the "scroll." People stop because it isn\'t a standard house.'
+    title: 'IG Feed (3x Week)',
+    icon: Instagram,
+    color: 'text-orange-600',
+    bg: 'bg-orange-50',
+    instruction: 'High quality Before/After carousels or Virtual Quote videos.',
+    items: [
+      { id: 'feed_1', label: 'Feed Post #1' },
+      { id: 'feed_2', label: 'Feed Post #2' },
+      { id: 'feed_3', label: 'Feed Post #3' }
+    ]
   },
   {
-    id: 'vid_promise',
-    title: 'The Service Promise',
-    instruction: 'Film yourself talking to the camera next to the van. Explain "easy payments" or the "24h re-clean guarantee."',
-    platform: 'FB Page / IG Feed',
-    why: 'Objection handling. Removes the fear of booking a new trade and builds trust.'
-  },
-  {
-    id: 'vid_quote',
-    title: 'The Virtual Quote',
-    instruction: 'Walk around a typical house. Point out specific windows/frames and state a clear benchmark price.',
-    platform: 'FB / IG Stories',
-    why: 'Builds price transparency and filters for serious leads.'
+    title: 'FB Groups (Tue/Thu/Sat)',
+    icon: Facebook,
+    color: 'text-blue-600',
+    bg: 'bg-blue-50',
+    instruction: 'Quality over quantity. Post Virtual Quote or high-impact B/A.',
+    items: [
+      { id: 'group_tue', label: 'Tuesday Group Post' },
+      { id: 'group_thu', label: 'Thursday Group Post' },
+      { id: 'group_sat', label: 'Saturday Group Post' }
+    ]
   }
 ];
 
@@ -276,7 +299,7 @@ function App() {
         // Weekly Marketing Reset
         if (data.marketing?.lastReset !== currentSunday) {
           const resetMarketing = { lastReset: currentSunday };
-          MARKETING_TASKS.forEach(item => resetMarketing[item.id] = false);
+          MARKETING_STRATEGY.forEach(section => section.items.forEach(item => resetMarketing[item.id] = false));
           newData.marketing = resetMarketing;
           needsUpdate = true;
         }
@@ -293,7 +316,7 @@ function App() {
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         
         const initialMarketing = { lastReset: getCurrentSunday() };
-        MARKETING_TASKS.forEach(item => initialMarketing[item.id] = false);
+        MARKETING_STRATEGY.forEach(section => section.items.forEach(item => initialMarketing[item.id] = false));
 
         const initialData = {
           gasUrl: '',
@@ -551,33 +574,42 @@ function App() {
               <p className="text-xs text-blue-700">Resets every Sunday.</p>
             </div>
             
-            <div className="space-y-4">
-              {MARKETING_TASKS.map((task) => {
-                const isDone = firestoreData.marketing?.[task.id] || false;
-                return (
-                  <div key={task.id} className={`bg-white rounded-xl border transition-all ${isDone ? 'border-green-200 opacity-70' : 'border-slate-200 shadow-sm'}`}>
-                    <div 
-                      onClick={() => handleMarketingToggle(task.id)}
-                      className="p-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50 rounded-t-xl"
-                    >
-                      {isDone ? <CheckSquare className="w-6 h-6 text-green-500 mt-1 shrink-0" /> : <div className="w-6 h-6 rounded border-2 border-slate-300 mt-1 shrink-0" />}
-                      <div className="flex-1">
-                        <h3 className={`font-bold ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</h3>
-                        <p className={`text-sm mt-1 leading-relaxed ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>{task.instruction}</p>
-                      </div>
-                    </div>
-                    
-                    {!isDone && (
-                      <div className="px-4 pb-4 pt-0 flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">{task.platform}</span>
-                        </div>
-                        <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded italic">💡 {task.why}</p>
-                      </div>
-                    )}
+            <div className="space-y-6">
+              {MARKETING_STRATEGY.map((section, idx) => (
+                <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className={`p-3 border-b border-slate-100 flex justify-between items-center ${section.bg}`}>
+                    <h3 className={`font-bold text-sm flex items-center gap-2 ${section.color}`}>
+                      <section.icon className="w-4 h-4" /> {section.title}
+                    </h3>
                   </div>
-                )
-              })}
+                  
+                  <div className="p-3 bg-slate-50 border-b border-slate-100">
+                    <p className="text-xs text-slate-500 italic">{section.instruction}</p>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {section.items.map((item) => {
+                      const isDone = firestoreData.marketing?.[item.id] || false;
+                      return (
+                        <div 
+                          key={item.id} 
+                          onClick={() => handleMarketingToggle(item.id)}
+                          className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors ${isDone ? 'bg-slate-50' : ''}`}
+                        >
+                          {isDone ? (
+                            <CheckSquare className="w-5 h-5 text-green-500 shrink-0" />
+                          ) : (
+                            <div className="w-5 h-5 rounded border-2 border-slate-300 shrink-0" />
+                          )}
+                          <span className={`text-sm ${isDone ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
