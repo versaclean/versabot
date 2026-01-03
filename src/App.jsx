@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
+  MessageSquare, 
   CheckSquare, 
   Settings, 
+  Send, 
   Plus, 
   Trash2, 
   RefreshCw,
@@ -14,7 +16,13 @@ import {
   Lock,
   UserPlus,
   LogIn,
+  Brain,
+  Cpu,
+  Database,
   Video,
+  Scissors,
+  Camera,
+  Smartphone,
   Bell
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
@@ -45,6 +53,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
@@ -90,68 +99,30 @@ const DAILY_ROUTINE = [
   }
 ];
 
-const MARKETING_TASKS = [
-  {
-    id: 'reel_team',
-    title: 'Reel: The Team Arrival',
-    instruction: 'Film inside van, pan to team working. TAGS: Use a different local area tag each time.',
-    platform: 'IG Reel / Facebook',
-    why: 'Shows scale/branding. Location tags train algorithm to find locals.'
-  },
-  {
-    id: 'reel_squeegee',
-    title: 'Reel: Squeegee Close-up',
-    instruction: 'Phone 6 inches from glass. Capture the water slice. TAGS: #Satisfying + Street name.',
-    platform: 'IG Reel / TikTok',
-    why: 'The ASMR hook gets new eyes. Local tags filter for customers.'
-  },
-  {
-    id: 'reel_oddjob',
-    title: 'Reel: The Odd Job',
-    instruction: 'Clean a sign, bus stop, or postbox. TAGS: #LocalCommunity + Town Name.',
-    platform: 'IG Reel / TikTok',
-    why: 'Unique content breaks the scroll.'
-  },
-  {
-    id: 'reel_promise',
-    title: 'Reel: Service Promise',
-    instruction: 'Face-to-camera next to van. Explain 24h Guarantee or Easy Pay. TAGS: #WindowCleaning',
-    platform: 'IG Reel / Facebook',
-    why: 'Objection handling builds trust.'
-  },
-  {
-    id: 'reel_quote',
-    title: 'Reel: Virtual Quote',
-    instruction: 'Walk around a house pointing out frames/prices. TAGS: #HousePrices',
-    platform: 'IG Reel / Stories',
-    why: 'Filters for serious leads.'
-  },
-  {
-    id: 'story_1',
-    title: 'Story 1: Work in Progress',
-    instruction: 'Photo of dirty vs clean window. ADD STICKER: Link to WhatsApp Quote.',
-    platform: 'IG Story (Mon/Tue)',
-    why: 'Low friction way for people to book.'
-  },
-  {
-    id: 'story_2',
-    title: 'Story 2: Team/Van Selfie',
-    instruction: 'Humanize the business. ADD STICKER: Link to WhatsApp Quote.',
-    platform: 'IG Story (Wed/Thu)',
-    why: 'People buy from people.'
-  },
-  {
-    id: 'story_3',
-    title: 'Story 3: Review/Result',
-    instruction: 'Screenshot a 5-star text. ADD STICKER: Link to WhatsApp Quote.',
-    platform: 'IG Story (Fri/Sat)',
-    why: 'Social proof drives weekend bookings.'
-  }
+// List 1: Raw Footage
+const SHOOTING_LIST = [
+  { id: 'shot_a', title: 'Shot A: The Arrival', desc: 'Van pulling up or walking up drive.', time: '15 secs' },
+  { id: 'shot_b', title: 'Shot B: Squeegee/Brush Close-up', desc: 'Pure cleaning action. Focus on sound.', time: '5 mins total' },
+  { id: 'shot_c', title: 'Shot C: The "Odd Job"', desc: 'Cleaning a local sign, postbox, or bench.', time: '30 secs' },
+  { id: 'shot_d', title: 'Shot D: The Service Promise', desc: 'Talk to camera: "24h re-clean guarantee..."', time: '30 secs' },
+  { id: 'shot_e', title: 'Shot E: The Virtual Quote', desc: 'Walkaround of 3-bed/4-bed. State price.', time: '60 secs' },
+  { id: 'shot_f', title: 'Shot F: Before/Afters', desc: '5 sets of static photos from exact same angle.', time: 'Photos' }
 ];
 
+// List 2: Editing Schedule
+const EDITING_SCHEDULE = [
+  { id: 'edit_mon', day: 'Mon', platform: 'TikTok', title: 'ASMR/Satisfying (Shot B)', style: 'Fast cuts, raw sound.', tags: '#satisfying #asmr #[Town]' },
+  { id: 'edit_tue', day: 'Tue', platform: 'FB Groups', title: 'Local Trust (Shot A)', style: 'Slow, real-time. Location tag.', tags: '"Working on [Street] today!"' },
+  { id: 'edit_wed', day: 'Wed', platform: 'IG Reels', title: 'The Odd Job (Shot C)', style: 'Aesthetic, Lofi music.', tags: '"Cleaning up [Town]..."' },
+  { id: 'edit_thu', day: 'Thu', platform: 'Stories', title: 'Service Promise (Shot D)', style: 'Add Poll: "Need a quote?"', tags: 'Use Location Sticker' },
+  { id: 'edit_fri', day: 'Fri', platform: 'TikTok/Reels', title: 'Weekly Recap (Mixed)', style: 'Mashup A+B+C. Upbeat audio.', tags: '#windowcleaning #smallbizuk' },
+  { id: 'edit_sat', day: 'Sat', platform: 'FB Feed', title: 'Virtual Quote (Shot E)', style: '90s video. Voiceover on price.', tags: '"How much for a house like this?"' }
+];
+
+// Helper to get the Sunday of the current week (for resets)
 const getCurrentSunday = () => {
   const d = new Date();
-  const day = d.getDay(); 
+  const day = d.getDay(); // 0 is Sunday
   const diff = d.getDate() - day; 
   const sunday = new Date(d.setDate(diff));
   return sunday.toISOString().split('T')[0];
@@ -249,8 +220,15 @@ function App() {
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     marketing: { lastReset: '' },
-    adhocTasks: []
+    adhocTasks: [],
+    botInstructions: '',
+    aiModel: 'gemini-1.5-flash'
   });
+
+  const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
+  const [chatInput, setChatInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     if (!isConfigured || !auth) {
@@ -278,6 +256,7 @@ function App() {
         let needsUpdate = false;
         let newData = { ...data };
 
+        // Daily Routine Reset
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -285,9 +264,10 @@ function App() {
           needsUpdate = true;
         }
 
+        // Weekly Marketing Reset
         if (data.marketing?.lastReset !== currentSunday) {
           const resetMarketing = { lastReset: currentSunday };
-          MARKETING_TASKS.forEach(item => resetMarketing[item.id] = false);
+          [...SHOOTING_LIST, ...EDITING_SCHEDULE].forEach(item => resetMarketing[item.id] = false);
           newData.marketing = resetMarketing;
           needsUpdate = true;
         }
@@ -299,18 +279,21 @@ function App() {
         }
 
       } else {
+        // Init New User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         
         const initialMarketing = { lastReset: getCurrentSunday() };
-        MARKETING_TASKS.forEach(item => initialMarketing[item.id] = false);
+        [...SHOOTING_LIST, ...EDITING_SCHEDULE].forEach(item => initialMarketing[item.id] = false);
 
         const initialData = {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           marketing: initialMarketing,
-          adhocTasks: []
+          adhocTasks: [],
+          botInstructions: '',
+          aiModel: 'gemini-1.5-flash'
         };
         setDoc(docRef, initialData);
         setFirestoreData(initialData);
@@ -319,11 +302,12 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
+  // --- NOTIFICATION LOGIC ---
   useEffect(() => {
     if (!firestoreData.routine) return;
+
     const hour = new Date().getHours();
     let currentBlock = '';
-    
     if (hour >= 6 && hour < 12) currentBlock = 'morning';
     else if (hour >= 12 && hour < 17) currentBlock = 'midday';
     else if (hour >= 17 && hour < 22) currentBlock = 'evening';
@@ -366,6 +350,8 @@ function App() {
     if (firestoreData.gasUrl) fetchLiveData();
   }, [firestoreData.gasUrl]);
 
+  // --- Handlers ---
+
   const handleSignOut = () => {
     if (auth) {
         signOut(auth).catch(e => console.error(e));
@@ -384,10 +370,16 @@ function App() {
   const handleMarketingToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.marketing?.[taskId] || false;
-    setFirestoreData(prev => ({ ...prev, marketing: { ...prev.marketing, [taskId]: !currentState } }));
+    setFirestoreData(prev => ({ 
+      ...prev, 
+      marketing: { ...prev.marketing, [taskId]: !currentState } 
+    }));
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); } 
-    catch(err) { if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); }
+    try { 
+      await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); 
+    } catch(err) { 
+      if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); 
+    }
   };
 
   const handleAddTask = async (e) => {
@@ -416,7 +408,9 @@ function App() {
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
-        'targets.weekly': Number(firestoreData.targets.weekly)
+        'targets.weekly': Number(firestoreData.targets.weekly),
+        botInstructions: firestoreData.botInstructions || '',
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try {
         await updateDoc(docRef, updates);
@@ -425,13 +419,80 @@ function App() {
     } catch(err) {
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
-            targets: firestoreData.targets
+            targets: firestoreData.targets,
+            botInstructions: firestoreData.botInstructions || '',
+            aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
         }, { merge: true });
         alert('Settings Saved');
         fetchLiveData();
     }
   };
 
+  const arrayToCSV = (arr) => {
+    if (!Array.isArray(arr) || arr.length === 0) return "";
+    return arr.map(row => row.join(",")).join("\n");
+  };
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = { role: 'user', text: chatInput };
+    setMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setIsTyping(true);
+
+    let currentData = liveData;
+    try {
+        const freshData = await fetchLiveData();
+        if (freshData) currentData = freshData;
+    } catch (e) {}
+
+    const rawCSV = arrayToCSV(currentData?.raw_context || []);
+
+    const systemPrompt = `
+      You are versaBOT, a business assistant.
+      USER RULES: ${firestoreData.botInstructions || "None."}
+      FINANCIALS: ${JSON.stringify(currentData?.financials || {})}
+      CONTEXT (CSV): ${rawCSV}
+      Answer concisely in GBP (£).
+    `;
+
+    const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); 
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] }),
+          signal: controller.signal
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      const data = await response.json();
+      
+      if (data.error) {
+        setMessages(prev => [...prev, { role: 'ai', text: `API Error: ${data.error.message}` }]);
+      } else {
+        const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+        setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'ai', text: "Request Timed Out. Data might be too large." }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: "Connection Error. Please check internet." }]);
+      }
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
   // --- RENDERING ---
@@ -463,15 +524,25 @@ function App() {
 
       <main className="p-4 max-w-2xl mx-auto">
         
+        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {currentNotification && (
-              <div onClick={() => setActiveTab('tasks')} className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100 transition-colors">
-                <div className="p-2 bg-orange-100 rounded-full"><Bell className="w-5 h-5 text-orange-600" /></div>
-                <div className="flex-1"><h3 className="font-bold text-orange-800 text-sm">Action Required</h3><p className="text-xs text-orange-700">{currentNotification}</p></div>
+              <div 
+                onClick={() => setActiveTab('tasks')}
+                className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100 transition-colors"
+              >
+                <div className="p-2 bg-orange-100 rounded-full">
+                  <Bell className="w-5 h-5 text-orange-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-orange-800 text-sm">Action Required</h3>
+                  <p className="text-xs text-orange-700">{currentNotification}</p>
+                </div>
                 <div className="text-orange-400">→</div>
               </div>
             )}
+
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div>
               <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2>
@@ -487,41 +558,106 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'marketing' && (
-          <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-              <h2 className="text-blue-900 font-bold text-lg mb-1 flex items-center gap-2"><Video className="w-5 h-5" /> Weekly Content Strategy</h2>
-              <p className="text-xs text-blue-700">Resets every Sunday.</p>
+        {/* CHAT */}
+        {activeTab === 'chat' && (
+          <div className="flex flex-col h-[calc(100vh-8rem)]">
+            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide">
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'}`}>{m.text}</div>
+                </div>
+              ))}
+              {isTyping && <div className="flex justify-start"><div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div></div>}
+              <div ref={chatEndRef} />
             </div>
-            <div className="space-y-4">
-              {MARKETING_TASKS.map((task) => {
-                const isDone = firestoreData.marketing?.[task.id] || false;
-                const isStory = task.id.includes('story');
-                return (
-                  <div key={task.id} className={`bg-white rounded-xl border transition-all ${isDone ? 'border-green-200 opacity-70' : 'border-slate-200 shadow-sm'}`}>
-                    <div onClick={() => handleMarketingToggle(task.id)} className="p-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50 rounded-t-xl">
-                      {isDone ? <CheckSquare className="w-6 h-6 text-green-500 mt-1 shrink-0" /> : <div className="w-6 h-6 rounded border-2 border-slate-300 mt-1 shrink-0" />}
-                      <div className="flex-1">
-                        <div className="flex justify-between items-center mb-1">
-                          <h3 className={`font-bold ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</h3>
-                          {isStory && <span className="bg-pink-100 text-pink-600 text-[9px] font-bold px-2 py-0.5 rounded-full">STORY</span>}
-                        </div>
-                        <p className={`text-sm mt-1 leading-relaxed ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>{task.instruction}</p>
-                      </div>
-                    </div>
-                    {!isDone && (
-                      <div className="px-4 pb-4 pt-0 flex flex-col gap-2">
-                        <div className="flex items-center gap-2"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">{task.platform}</span></div>
-                        <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded italic">💡 {task.why}</p>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+            <div className="flex gap-2">
+              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your data..." className="flex-1 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+              <button onClick={handleSendMessage} disabled={!chatInput.trim()} className="p-3 bg-blue-600 text-white rounded-xl disabled:opacity-50"><Send className="w-5 h-5" /></button>
             </div>
           </div>
         )}
 
+        {/* MARKETING (UPDATED STRUCTURE) */}
+        {activeTab === 'marketing' && (
+          <div className="space-y-6 pb-4">
+            
+            {/* Vibe Settings */}
+            <div className="bg-slate-800 text-white p-4 rounded-xl shadow-md">
+              <h2 className="font-bold flex items-center gap-2 mb-3 text-sm uppercase tracking-wider"><Smartphone className="w-4 h-4" /> Platform Vibe Shift</h2>
+              <div className="grid grid-cols-1 gap-2 text-xs opacity-90">
+                <div className="flex items-center gap-2"><span className="bg-black text-white px-1.5 rounded">TikTok</span> High Speed. Auto-Captions (Bold/Yellow).</div>
+                <div className="flex items-center gap-2"><span className="bg-pink-600 text-white px-1.5 rounded">IG</span> 30fps. Lofi Filter. "Link in Bio" sticker.</div>
+                <div className="flex items-center gap-2"><span className="bg-blue-600 text-white px-1.5 rounded">FB</span> Raw/Genuine. No filters. Tag Town/Area.</div>
+              </div>
+            </div>
+
+            {/* List 1: Raw Footage */}
+            <div>
+              <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2">
+                <Camera className="w-4 h-4 text-blue-600" /> Weekly Footage (20m Total)
+              </h3>
+              <div className="space-y-3">
+                {SHOOTING_LIST.map((task) => {
+                  const isDone = firestoreData.marketing?.[task.id] || false;
+                  return (
+                    <div 
+                      key={task.id}
+                      onClick={() => handleMarketingToggle(task.id)}
+                      className={`bg-white p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${isDone ? 'border-green-200 opacity-60' : 'border-slate-200 shadow-sm'}`}
+                    >
+                      {isDone ? <CheckSquare className="w-5 h-5 text-green-500 shrink-0" /> : <div className="w-5 h-5 rounded border-2 border-slate-300 shrink-0" />}
+                      <div className="flex-1">
+                        <div className="flex justify-between">
+                          <span className={`text-sm font-semibold ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</span>
+                          <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full h-fit">{task.time}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">{task.desc}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* List 2: Edit Schedule */}
+            <div>
+              <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2">
+                <Scissors className="w-4 h-4 text-purple-600" /> Editing & Posting
+              </h3>
+              <div className="space-y-3">
+                {EDITING_SCHEDULE.map((task) => {
+                  const isDone = firestoreData.marketing?.[task.id] || false;
+                  return (
+                    <div key={task.id} className={`bg-white rounded-xl border overflow-hidden ${isDone ? 'border-green-200 opacity-60' : 'border-slate-200 shadow-sm'}`}>
+                      <div 
+                        onClick={() => handleMarketingToggle(task.id)}
+                        className="p-3 flex items-start gap-3 cursor-pointer hover:bg-slate-50"
+                      >
+                        {isDone ? <CheckSquare className="w-5 h-5 text-green-500 mt-0.5 shrink-0" /> : <div className="w-5 h-5 rounded border-2 border-slate-300 mt-0.5 shrink-0" />}
+                        <div className="flex-1">
+                          <div className="flex gap-2 mb-1">
+                            <span className="text-xs font-bold bg-slate-900 text-white px-1.5 rounded">{task.day}</span>
+                            <span className="text-xs font-bold text-slate-700">{task.platform}</span>
+                          </div>
+                          <h4 className={`text-sm font-semibold ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}`}>{task.title}</h4>
+                          <p className="text-xs text-slate-500 mt-1">{task.style}</p>
+                        </div>
+                      </div>
+                      {!isDone && (
+                        <div className="bg-slate-50 px-3 py-2 text-[10px] text-slate-600 border-t border-slate-100">
+                          <span className="font-bold">🏷️ Tags/Caption:</span> {task.tags}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* TASKS */}
         {activeTab === 'tasks' && (
           <div className="space-y-6">
             {DAILY_ROUTINE.map((section, idx) => (
@@ -553,6 +689,7 @@ function App() {
           </div>
         )}
 
+        {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Configuration</h2>
@@ -565,6 +702,37 @@ function App() {
                 <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
                 <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               </div>
+              
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID (Advanced)</label>
+                <input 
+                  value={firestoreData.aiModel} 
+                  onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})}
+                  placeholder="gemini-1.5-flash"
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro or gemini-2.0-flash-exp</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
+                <textarea 
+                  value={firestoreData.botInstructions} 
+                  onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
+                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+                
+                {/* Data Status Indicator */}
+                <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
+                  <Database className="w-3 h-3" />
+                  <span>
+                    Rows Loaded: {liveData?.raw_context?.length || 0}
+                    {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}
+                  </span>
+                </div>
+              </div>
+
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
           </div>
@@ -572,9 +740,11 @@ function App() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
+        {/* Navigation Items */}
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'marketing', icon: Video, label: 'Content' },
+          { id: 'chat', icon: MessageSquare, label: 'Chat' },
+          { id: 'marketing', icon: Video, label: 'Content' }, // NEW TAB
           { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
