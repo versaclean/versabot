@@ -17,7 +17,8 @@ import {
   UserPlus,
   LogIn,
   Brain,
-  Cpu
+  Cpu,
+  Database
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -175,14 +176,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
   
-  // ADDED 'aiModel' to state
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     adhocTasks: [],
     botInstructions: '',
-    aiModel: 'gemini-1.5-flash' // Default Stable Model
+    aiModel: 'gemini-1.5-flash'
   });
 
   const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
@@ -215,7 +215,6 @@ function App() {
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
           updateDoc(docRef, { routine: resetRoutine });
         } else {
-          // Merge data to respect new fields like aiModel
           setFirestoreData(prev => ({
             ...prev, 
             ...data,
@@ -296,7 +295,6 @@ function App() {
     if (!user) return;
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     
-    // Save AI Model along with other settings
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
@@ -348,7 +346,7 @@ function App() {
       Answer concisely in GBP (£).
     `;
 
-    // USE THE SAVED MODEL ID FROM SETTINGS
+    // USE THE SAVED MODEL ID
     const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
 
     try {
@@ -492,7 +490,6 @@ function App() {
                   placeholder="gemini-1.5-flash"
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro, gemini-1.0-pro, or gemini-2.0-flash-exp</p>
               </div>
 
               <div>
@@ -503,6 +500,15 @@ function App() {
                   placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
+                
+                {/* NEW: Data Status Indicator */}
+                <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
+                  <Database className="w-3 h-3" />
+                  <span>
+                    Rows Loaded: {liveData?.raw_context?.length || 0}
+                    {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}
+                  </span>
+                </div>
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
