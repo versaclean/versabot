@@ -175,7 +175,6 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
-  
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
@@ -294,7 +293,6 @@ function App() {
     e.preventDefault();
     if (!user) return;
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
@@ -318,6 +316,12 @@ function App() {
     }
   };
 
+  // Helper to convert 2D array to lighter CSV string
+  const arrayToCSV = (arr) => {
+    if (!Array.isArray(arr) || arr.length === 0) return "";
+    return arr.map(row => row.join(", ")).join("\n");
+  };
+
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg = { role: 'user', text: chatInput };
@@ -331,6 +335,9 @@ function App() {
         if (freshData) currentData = freshData;
     } catch (e) {}
 
+    // OPTIMIZED: Convert large array to CSV string to save tokens/bandwidth
+    const rawCSV = arrayToCSV(currentData?.raw_context);
+
     const systemPrompt = `
       You are versaBOT, a business assistant.
       
@@ -340,8 +347,8 @@ function App() {
       LIVE FINANCIALS:
       ${JSON.stringify(currentData?.financials || {})}
       
-      RAW DATA / CONTEXT:
-      ${JSON.stringify(currentData?.raw_context || [])}
+      RAW DATA / CONTEXT (CSV Format):
+      ${rawCSV.substring(0, 800000)} 
 
       Answer concisely in GBP (£).
     `;
@@ -490,6 +497,7 @@ function App() {
                   placeholder="gemini-1.5-flash"
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro or gemini-2.0-flash-exp</p>
               </div>
 
               <div>
@@ -501,7 +509,7 @@ function App() {
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
                 
-                {/* NEW: Data Status Indicator */}
+                {/* Data Status Indicator */}
                 <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
                   <Database className="w-3 h-3" />
                   <span>
