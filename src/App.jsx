@@ -1,9 +1,41 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, MessageSquare, CheckSquare, Settings, Send, Plus, Trash2, RefreshCw, Loader2, TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, Database, Video, Target, Smartphone, Bell } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  LayoutDashboard, 
+  CheckSquare, 
+  Settings, 
+  Plus, 
+  Trash2, 
+  RefreshCw,
+  Loader2,
+  TrendingUp,
+  AlertCircle,
+  LogOut,
+  Mail,
+  Lock,
+  UserPlus,
+  LogIn,
+  Video,
+  Bell
+} from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  arrayUnion, 
+  arrayRemove 
+} from 'firebase/firestore';
 
+// --- CONFIGURATION ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -13,10 +45,10 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
+// Initialize Firebase
 let app, auth, db;
 let isConfigured = false;
 
@@ -31,6 +63,7 @@ if (firebaseConfig.apiKey) {
   }
 }
 
+// --- CONSTANTS ---
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
@@ -216,15 +249,8 @@ function App() {
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     marketing: { lastReset: '' },
-    adhocTasks: [],
-    botInstructions: '',
-    aiModel: 'gemini-1.5-flash'
+    adhocTasks: []
   });
-
-  const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
-  const [chatInput, setChatInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null);
 
   useEffect(() => {
     if (!isConfigured || !auth) {
@@ -284,9 +310,7 @@ function App() {
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           marketing: initialMarketing,
-          adhocTasks: [],
-          botInstructions: '',
-          aiModel: 'gemini-1.5-flash'
+          adhocTasks: []
         };
         setDoc(docRef, initialData);
         setFirestoreData(initialData);
@@ -392,9 +416,7 @@ function App() {
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
-        'targets.weekly': Number(firestoreData.targets.weekly),
-        botInstructions: firestoreData.botInstructions || '',
-        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
+        'targets.weekly': Number(firestoreData.targets.weekly)
     };
     try {
         await updateDoc(docRef, updates);
@@ -403,82 +425,17 @@ function App() {
     } catch(err) {
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
-            targets: firestoreData.targets,
-            botInstructions: firestoreData.botInstructions || '',
-            aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
+            targets: firestoreData.targets
         }, { merge: true });
         alert('Settings Saved');
         fetchLiveData();
     }
   };
 
-  const arrayToCSV = (arr) => {
-    if (!Array.isArray(arr) || arr.length === 0) return "";
-    return arr.map(row => row.join(",")).join("\n");
-  };
-
-  const handleSendMessage = async () => {
-    if (!chatInput.trim()) return;
-    const userMsg = { role: 'user', text: chatInput };
-    setMessages(prev => [...prev, userMsg]);
-    setChatInput('');
-    setIsTyping(true);
-
-    let currentData = liveData;
-    try {
-        const freshData = await fetchLiveData();
-        if (freshData) currentData = freshData;
-    } catch (e) {}
-
-    const rawCSV = arrayToCSV(currentData?.raw_context || []);
-
-    const systemPrompt = `
-      You are versaBOT, a business assistant.
-      USER RULES: ${firestoreData.botInstructions || "None."}
-      FINANCIALS: ${JSON.stringify(currentData?.financials || {})}
-      CONTEXT (CSV): ${rawCSV}
-      Answer concisely in GBP (£).
-    `;
-
-    const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); 
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] }),
-          signal: controller.signal
-        }
-      );
-      
-      clearTimeout(timeoutId);
-      const data = await response.json();
-      
-      if (data.error) {
-        setMessages(prev => [...prev, { role: 'ai', text: `API Error: ${data.error.message}` }]);
-      } else {
-        const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
-        setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        setMessages(prev => [...prev, { role: 'ai', text: "Request Timed Out. Data might be too large." }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'ai', text: "Connection Error. Please check internet." }]);
-      }
-    } finally {
-      setIsTyping(false);
-    }
-  };
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
+  // --- RENDERING ---
+  
   if (!isConfigured) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
@@ -526,24 +483,6 @@ function App() {
               <KPICard title="Debtors Total" value={fmt(liveData?.financials?.debtors_total)} alert={(liveData?.financials?.debtors_total || 0) > 5000} />
               <KPICard title="New Cust Value" value={fmt(liveData?.customers?.new_value_4w)} subtext="This Month" />
               <KPICard title="Churn" value={liveData?.customers?.churn_count || 0} alert={(liveData?.customers?.churn_count || 0) > 0} subtext="Clients Lost" />
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'chat' && (
-          <div className="flex flex-col h-[calc(100vh-8rem)]">
-            <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide">
-              {messages.map((m, i) => (
-                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${m.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none shadow-sm'}`}>{m.text}</div>
-                </div>
-              ))}
-              {isTyping && <div className="flex justify-start"><div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div></div>}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="flex gap-2">
-              <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your data..." className="flex-1 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600" />
-              <button onClick={handleSendMessage} disabled={!chatInput.trim()} className="p-3 bg-blue-600 text-white rounded-xl disabled:opacity-50"><Send className="w-5 h-5" /></button>
             </div>
           </div>
         )}
@@ -626,23 +565,6 @@ function App() {
                 <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
                 <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               </div>
-              
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID (Advanced)</label>
-                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
-                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro or gemini-2.0-flash-exp</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
-                <textarea value={firestoreData.botInstructions} onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})} placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent." className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600" />
-                
-                <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
-                  <Database className="w-3 h-3" />
-                  <span>Rows Loaded: {liveData?.raw_context?.length || 0} {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}</span>
-                </div>
-              </div>
-
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
           </div>
@@ -652,7 +574,6 @@ function App() {
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'chat', icon: MessageSquare, label: 'Chat' },
           { id: 'marketing', icon: Video, label: 'Content' },
           { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
