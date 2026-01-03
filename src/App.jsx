@@ -319,7 +319,7 @@ function App() {
   // Helper to convert 2D array to lighter CSV string
   const arrayToCSV = (arr) => {
     if (!Array.isArray(arr) || arr.length === 0) return "";
-    return arr.map(row => row.join(", ")).join("\n");
+    return arr.map(row => row.join(",")).join("\n");
   };
 
   const handleSendMessage = async () => {
@@ -335,45 +335,56 @@ function App() {
         if (freshData) currentData = freshData;
     } catch (e) {}
 
-    // OPTIMIZED: Convert large array to CSV string to save tokens/bandwidth
-    const rawCSV = arrayToCSV(currentData?.raw_context);
+    // NO ROW LIMIT - Sending full CSV
+    const rawCSV = arrayToCSV(currentData?.raw_context || []);
 
     const systemPrompt = `
       You are versaBOT, a business assistant.
       
-      USER DEFINED RULES (Always follow these): 
+      USER DEFINED RULES: 
       ${firestoreData.botInstructions || "No custom rules set."}
 
       LIVE FINANCIALS:
       ${JSON.stringify(currentData?.financials || {})}
       
-      RAW DATA / CONTEXT (CSV Format):
-      ${rawCSV.substring(0, 800000)} 
+      RAW DATA / CONTEXT (CSV Format - Full Dataset):
+      ${rawCSV}
 
       Answer concisely in GBP (£).
     `;
 
-    // USE THE SAVED MODEL ID
     const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
 
     try {
+      // Increased timeout to 120s for full dataset processing
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); 
+
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] })
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] }),
+          signal: controller.signal
         }
       );
+      
+      clearTimeout(timeoutId);
       const data = await response.json();
+      
       if (data.error) {
         setMessages(prev => [...prev, { role: 'ai', text: `API Error: ${data.error.message}` }]);
       } else {
-        const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, error.";
+        const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
         setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
       }
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Connection Error." }]);
+      if (error.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'ai', text: "Request Timed Out. Data might be too large." }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: "Connection Error. Please check internet." }]);
+      }
     } finally {
       setIsTyping(false);
     }
