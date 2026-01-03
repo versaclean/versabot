@@ -18,7 +18,9 @@ import {
   LogIn,
   Brain,
   Cpu,
-  Database
+  Database,
+  Video,
+  Target
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -90,6 +92,53 @@ const DAILY_ROUTINE = [
     ]
   }
 ];
+
+const MARKETING_TASKS = [
+  {
+    id: 'vid_team',
+    title: 'The Team Arrival',
+    instruction: 'Start filming inside the van. Drive slowly up the street and pan to your team member already working.',
+    platform: 'Facebook / IG Stories',
+    why: 'Shows scale and professional branding. Proves you aren\'t a "one-man-band."'
+  },
+  {
+    id: 'vid_squeegee',
+    title: 'The Squeegee Close-up',
+    instruction: 'Phone 6 inches from the glass. Capture the "slice" of the water leaving the window.',
+    platform: 'TikTok / Reels',
+    why: 'The ASMR/Satisfying hook. Primary way to get new eyes on the business.'
+  },
+  {
+    id: 'vid_oddjob',
+    title: 'The "Odd Job"',
+    instruction: 'Clean a shop sign, a bus stop, or a dirty postbox (even for free).',
+    platform: 'TikTok / Reels',
+    why: 'Unique content breaks the "scroll." People stop because it isn\'t a standard house.'
+  },
+  {
+    id: 'vid_promise',
+    title: 'The Service Promise',
+    instruction: 'Film yourself talking to the camera next to the van. Explain "easy payments" or the "24h re-clean guarantee."',
+    platform: 'FB Page / IG Feed',
+    why: 'Objection handling. Removes the fear of booking a new trade and builds trust.'
+  },
+  {
+    id: 'vid_quote',
+    title: 'The Virtual Quote',
+    instruction: 'Walk around a typical house. Point out specific windows/frames and state a clear benchmark price.',
+    platform: 'FB / IG Stories',
+    why: 'Builds price transparency and filters for serious leads.'
+  }
+];
+
+// Helper to get the Sunday of the current week (for resets)
+const getCurrentSunday = () => {
+  const d = new Date();
+  const day = d.getDay(); // 0 is Sunday
+  const diff = d.getDate() - day; 
+  const sunday = new Date(d.setDate(diff));
+  return sunday.toISOString().split('T')[0];
+};
 
 const KPICard = ({ title, value, subtext, alert }) => (
   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
@@ -179,6 +228,7 @@ function App() {
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
+    marketing: { lastReset: '' },
     adhocTasks: [],
     botInstructions: '',
     aiModel: 'gemini-1.5-flash'
@@ -208,25 +258,48 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
+        const currentSunday = getCurrentSunday();
+
         if (!data.gasUrl) data.gasUrl = '';
+        
+        let needsUpdate = false;
+        let newData = { ...data };
+
+        // Daily Routine Reset
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
-          updateDoc(docRef, { routine: resetRoutine });
-        } else {
-          setFirestoreData(prev => ({
-            ...prev, 
-            ...data,
-            aiModel: data.aiModel || 'gemini-1.5-flash'
-          })); 
+          newData.routine = resetRoutine;
+          needsUpdate = true;
         }
+
+        // Weekly Marketing Reset
+        if (data.marketing?.lastReset !== currentSunday) {
+          const resetMarketing = { lastReset: currentSunday };
+          MARKETING_TASKS.forEach(item => resetMarketing[item.id] = false);
+          newData.marketing = resetMarketing;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          updateDoc(docRef, newData);
+        } else {
+          setFirestoreData(prev => ({ ...prev, ...data })); 
+        }
+
       } else {
+        // Init New User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
+        
+        const initialMarketing = { lastReset: getCurrentSunday() };
+        MARKETING_TASKS.forEach(item => initialMarketing[item.id] = false);
+
         const initialData = {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
+          marketing: initialMarketing,
           adhocTasks: [],
           botInstructions: '',
           aiModel: 'gemini-1.5-flash'
@@ -268,6 +341,25 @@ function App() {
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
     try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } 
     catch(err) { if (err.code === 'not-found') await setDoc(docRef, { routine: { [taskId]: !currentState } }, { merge: true }); }
+  };
+
+  const handleMarketingToggle = async (taskId) => {
+    if (!user) return;
+    const currentState = firestoreData.marketing?.[taskId] || false;
+    
+    // Optimistic
+    setFirestoreData(prev => ({ 
+      ...prev, 
+      marketing: { ...prev.marketing, [taskId]: !currentState } 
+    }));
+
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    try { 
+      await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); 
+    } catch(err) { 
+      // Fallback
+      if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); 
+    }
   };
 
   const handleAddTask = async (e) => {
@@ -316,7 +408,6 @@ function App() {
     }
   };
 
-  // Helper to convert 2D array to lighter CSV string
   const arrayToCSV = (arr) => {
     if (!Array.isArray(arr) || arr.length === 0) return "";
     return arr.map(row => row.join(",")).join("\n");
@@ -335,28 +426,19 @@ function App() {
         if (freshData) currentData = freshData;
     } catch (e) {}
 
-    // NO ROW LIMIT - Sending full CSV
     const rawCSV = arrayToCSV(currentData?.raw_context || []);
 
     const systemPrompt = `
       You are versaBOT, a business assistant.
-      
-      USER DEFINED RULES: 
-      ${firestoreData.botInstructions || "No custom rules set."}
-
-      LIVE FINANCIALS:
-      ${JSON.stringify(currentData?.financials || {})}
-      
-      RAW DATA / CONTEXT (CSV Format - Full Dataset):
-      ${rawCSV}
-
+      USER RULES: ${firestoreData.botInstructions || "None."}
+      FINANCIALS: ${JSON.stringify(currentData?.financials || {})}
+      CONTEXT (CSV): ${rawCSV}
       Answer concisely in GBP (£).
     `;
 
     const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
 
     try {
-      // Increased timeout to 120s for full dataset processing
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); 
 
@@ -421,6 +503,8 @@ function App() {
       </div>
 
       <main className="p-4 max-w-2xl mx-auto">
+        
+        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
@@ -438,6 +522,7 @@ function App() {
           </div>
         )}
 
+        {/* CHAT */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-[calc(100vh-8rem)]">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide">
@@ -456,6 +541,48 @@ function App() {
           </div>
         )}
 
+        {/* MARKETING */}
+        {activeTab === 'marketing' && (
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+              <h2 className="text-blue-900 font-bold text-lg mb-1 flex items-center gap-2">
+                <Video className="w-5 h-5" /> Weekly Content Strategy
+              </h2>
+              <p className="text-xs text-blue-700">Resets every Sunday.</p>
+            </div>
+            
+            <div className="space-y-4">
+              {MARKETING_TASKS.map((task) => {
+                const isDone = firestoreData.marketing?.[task.id] || false;
+                return (
+                  <div key={task.id} className={`bg-white rounded-xl border transition-all ${isDone ? 'border-green-200 opacity-70' : 'border-slate-200 shadow-sm'}`}>
+                    <div 
+                      onClick={() => handleMarketingToggle(task.id)}
+                      className="p-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50 rounded-t-xl"
+                    >
+                      {isDone ? <CheckSquare className="w-6 h-6 text-green-500 mt-1 shrink-0" /> : <div className="w-6 h-6 rounded border-2 border-slate-300 mt-1 shrink-0" />}
+                      <div className="flex-1">
+                        <h3 className={`font-bold ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</h3>
+                        <p className={`text-sm mt-1 leading-relaxed ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>{task.instruction}</p>
+                      </div>
+                    </div>
+                    
+                    {!isDone && (
+                      <div className="px-4 pb-4 pt-0 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">{task.platform}</span>
+                        </div>
+                        <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded italic">💡 {task.why}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* TASKS */}
         {activeTab === 'tasks' && (
           <div className="space-y-6">
             {DAILY_ROUTINE.map((section, idx) => (
@@ -487,6 +614,7 @@ function App() {
           </div>
         )}
 
+        {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Configuration</h2>
@@ -537,7 +665,14 @@ function App() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
-        {[{ id: 'dashboard', icon: LayoutDashboard, label: 'Home' }, { id: 'chat', icon: MessageSquare, label: 'Chat' }, { id: 'tasks', icon: CheckSquare, label: 'Tasks' }, { id: 'settings', icon: Settings, label: 'Settings' }].map((item) => (
+        {/* Navigation Items */}
+        {[
+          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
+          { id: 'chat', icon: MessageSquare, label: 'Chat' },
+          { id: 'marketing', icon: Video, label: 'Content' }, // NEW TAB
+          { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+          { id: 'settings', icon: Settings, label: 'Settings' }
+        ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
