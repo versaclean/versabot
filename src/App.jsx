@@ -15,7 +15,9 @@ import {
   Mail,
   Lock,
   UserPlus,
-  LogIn
+  LogIn,
+  Brain,
+  Cpu
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -172,12 +174,15 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
+  
+  // ADDED 'aiModel' to state
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     adhocTasks: [],
-    botInstructions: ''
+    botInstructions: '',
+    aiModel: 'gemini-1.5-flash' // Default Stable Model
   });
 
   const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
@@ -210,7 +215,12 @@ function App() {
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
           updateDoc(docRef, { routine: resetRoutine });
         } else {
-          setFirestoreData(prev => ({...prev, ...data})); 
+          // Merge data to respect new fields like aiModel
+          setFirestoreData(prev => ({
+            ...prev, 
+            ...data,
+            aiModel: data.aiModel || 'gemini-1.5-flash'
+          })); 
         }
       } else {
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
@@ -220,7 +230,8 @@ function App() {
           targets: { monthly: 20000, weekly: 5000 },
           routine: initialRoutine,
           adhocTasks: [],
-          botInstructions: ''
+          botInstructions: '',
+          aiModel: 'gemini-1.5-flash'
         };
         setDoc(docRef, initialData);
         setFirestoreData(initialData);
@@ -284,11 +295,14 @@ function App() {
     e.preventDefault();
     if (!user) return;
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    
+    // Save AI Model along with other settings
     const updates = {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
-        botInstructions: firestoreData.botInstructions || ''
+        botInstructions: firestoreData.botInstructions || '',
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try {
         await updateDoc(docRef, updates);
@@ -298,7 +312,8 @@ function App() {
         await setDoc(docRef, {
             gasUrl: firestoreData.gasUrl,
             targets: firestoreData.targets,
-            botInstructions: firestoreData.botInstructions || ''
+            botInstructions: firestoreData.botInstructions || '',
+            aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
         }, { merge: true });
         alert('Settings Saved');
         fetchLiveData();
@@ -333,9 +348,12 @@ function App() {
       Answer concisely in GBP (£).
     `;
 
+    // USE THE SAVED MODEL ID FROM SETTINGS
+    const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
+
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -367,12 +385,7 @@ function App() {
         <div className="bg-white p-8 rounded-2xl shadow-xl border-t-4 border-red-500 max-w-md w-full">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-slate-800 mb-2">Setup Required</h1>
-          <p className="text-slate-600 mb-4 text-sm">
-            The app cannot start because the Environment Variables are missing in Vercel.
-          </p>
-          <div className="bg-slate-100 p-3 rounded text-xs text-left font-mono mb-4 text-slate-500">
-            VITE_FIREBASE_API_KEY: {firebaseConfig.apiKey ? 'OK' : 'MISSING'}
-          </div>
+          <p className="text-slate-600 mb-4 text-sm">Environment Variables Missing in Vercel.</p>
         </div>
       </div>
     );
@@ -472,11 +485,22 @@ function App() {
               </div>
               
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1">Bot Instructions (Memory)</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID (Advanced)</label>
+                <input 
+                  value={firestoreData.aiModel} 
+                  onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})}
+                  placeholder="gemini-1.5-flash"
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro, gemini-1.0-pro, or gemini-2.0-flash-exp</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
                 <textarea 
                   value={firestoreData.botInstructions} 
                   onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
-                  placeholder="e.g., Active customers have 'Live' in Column C."
+                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
                   className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 />
               </div>
