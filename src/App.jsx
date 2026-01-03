@@ -1,48 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  LayoutDashboard, 
-  MessageSquare, 
-  CheckSquare, 
-  Settings, 
-  Send, 
-  Plus, 
-  Trash2, 
-  RefreshCw,
-  Loader2,
-  TrendingUp,
-  AlertCircle,
-  LogOut,
-  Mail,
-  Lock,
-  UserPlus,
-  LogIn,
-  Brain,
-  Cpu,
-  Database,
-  Video,
-  Instagram,
-  Facebook,
-  Smartphone
-} from 'lucide-react';
+import { LayoutDashboard, MessageSquare, CheckSquare, Settings, Send, Plus, Trash2, RefreshCw, Loader2, TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, Database, Video, Target, Smartphone, Bell } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  updateDoc, 
-  arrayUnion, 
-  arrayRemove 
-} from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
-// --- CONFIGURATION ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -56,7 +17,6 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
-// Initialize Firebase
 let app, auth, db;
 let isConfigured = false;
 
@@ -71,93 +31,94 @@ if (firebaseConfig.apiKey) {
   }
 }
 
-// --- CONSTANTS ---
-
-// 1. DAILY ROUTINE (Resets every morning)
 const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
+    timeBlock: 'morning',
     items: [
-      { id: 'm_texts', label: 'Check texts (skips/pricing)' },
-      { id: 'm_stories', label: 'IG Story: Van Arrival / Coffee (Casual)' } // Added IG Story
+      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
+      { id: 'm_team', label: 'Go see team (get photo/video)' }
     ]
   },
   {
     title: '☕ Midday Check-in',
+    timeBlock: 'midday',
     items: [
       { id: 'mid_texts', label: 'Check texts for updates' },
-      { id: 'mid_stories', label: 'IG Story: Street Signs / Behind Scenes' } // Added IG Story
+      { id: 'mid_va', label: 'Check items from VA' }
     ]
   },
   {
     title: '🌙 Close Down',
+    timeBlock: 'evening',
     items: [
-      { id: 'close_fb', label: 'Post to FB Page (Mirror IG Feed/Reel)' }, // Added FB Page
       { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' }
     ]
   }
 ];
 
-// 2. WEEKLY MARKETING (Resets every Sunday)
-const MARKETING_STRATEGY = [
+const MARKETING_TASKS = [
   {
-    title: 'TikTok (Mon-Fri)',
-    icon: Smartphone,
-    color: 'text-pink-600',
-    bg: 'bg-pink-50',
-    instruction: 'Focus on "The Hook" & Odd Jobs. Local signals matter.',
-    items: [
-      { id: 'tt_1', label: 'TikTok #1' },
-      { id: 'tt_2', label: 'TikTok #2' },
-      { id: 'tt_3', label: 'TikTok #3' },
-      { id: 'tt_4', label: 'TikTok #4' },
-      { id: 'tt_5', label: 'TikTok #5' }
-    ]
+    id: 'reel_team',
+    title: 'Reel: The Team Arrival',
+    instruction: 'Film inside van, pan to team working. TAGS: Use a different local area tag each time.',
+    platform: 'IG Reel / Facebook',
+    why: 'Shows scale/branding. Location tags train algorithm to find locals.'
   },
   {
-    title: 'IG Reels (Mon-Fri)',
-    icon: Instagram,
-    color: 'text-purple-600',
-    bg: 'bg-purple-50',
-    instruction: 'Repurpose TikToks but use IG native fonts & trending audio.',
-    items: [
-      { id: 'reel_1', label: 'Reel #1' },
-      { id: 'reel_2', label: 'Reel #2' },
-      { id: 'reel_3', label: 'Reel #3' },
-      { id: 'reel_4', label: 'Reel #4' },
-      { id: 'reel_5', label: 'Reel #5' }
-    ]
+    id: 'reel_squeegee',
+    title: 'Reel: Squeegee Close-up',
+    instruction: 'Phone 6 inches from glass. Capture the water slice. TAGS: #Satisfying + Street name.',
+    platform: 'IG Reel / TikTok',
+    why: 'The ASMR hook gets new eyes. Local tags filter for customers.'
   },
   {
-    title: 'IG Feed (3x Week)',
-    icon: Instagram,
-    color: 'text-orange-600',
-    bg: 'bg-orange-50',
-    instruction: 'High quality Before/After carousels or Virtual Quote videos.',
-    items: [
-      { id: 'feed_1', label: 'Feed Post #1' },
-      { id: 'feed_2', label: 'Feed Post #2' },
-      { id: 'feed_3', label: 'Feed Post #3' }
-    ]
+    id: 'reel_oddjob',
+    title: 'Reel: The Odd Job',
+    instruction: 'Clean a sign, bus stop, or postbox. TAGS: #LocalCommunity + Town Name.',
+    platform: 'IG Reel / TikTok',
+    why: 'Unique content breaks the scroll.'
   },
   {
-    title: 'FB Groups (Tue/Thu/Sat)',
-    icon: Facebook,
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
-    instruction: 'Quality over quantity. Post Virtual Quote or high-impact B/A.',
-    items: [
-      { id: 'group_tue', label: 'Tuesday Group Post' },
-      { id: 'group_thu', label: 'Thursday Group Post' },
-      { id: 'group_sat', label: 'Saturday Group Post' }
-    ]
+    id: 'reel_promise',
+    title: 'Reel: Service Promise',
+    instruction: 'Face-to-camera next to van. Explain 24h Guarantee or Easy Pay. TAGS: #WindowCleaning',
+    platform: 'IG Reel / Facebook',
+    why: 'Objection handling builds trust.'
+  },
+  {
+    id: 'reel_quote',
+    title: 'Reel: Virtual Quote',
+    instruction: 'Walk around a house pointing out frames/prices. TAGS: #HousePrices',
+    platform: 'IG Reel / Stories',
+    why: 'Filters for serious leads.'
+  },
+  {
+    id: 'story_1',
+    title: 'Story 1: Work in Progress',
+    instruction: 'Photo of dirty vs clean window. ADD STICKER: Link to WhatsApp Quote.',
+    platform: 'IG Story (Mon/Tue)',
+    why: 'Low friction way for people to book.'
+  },
+  {
+    id: 'story_2',
+    title: 'Story 2: Team/Van Selfie',
+    instruction: 'Humanize the business. ADD STICKER: Link to WhatsApp Quote.',
+    platform: 'IG Story (Wed/Thu)',
+    why: 'People buy from people.'
+  },
+  {
+    id: 'story_3',
+    title: 'Story 3: Review/Result',
+    instruction: 'Screenshot a 5-star text. ADD STICKER: Link to WhatsApp Quote.',
+    platform: 'IG Story (Fri/Sat)',
+    why: 'Social proof drives weekend bookings.'
   }
 ];
 
-// Helper to get the Sunday of the current week (for resets)
 const getCurrentSunday = () => {
   const d = new Date();
-  const day = d.getDay(); // 0 is Sunday
+  const day = d.getDay(); 
   const diff = d.getDate() - day; 
   const sunday = new Date(d.setDate(diff));
   return sunday.toISOString().split('T')[0];
@@ -247,6 +208,9 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [currentNotification, setCurrentNotification] = useState(null);
+
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
@@ -288,7 +252,6 @@ function App() {
         let needsUpdate = false;
         let newData = { ...data };
 
-        // Daily Routine Reset
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -296,10 +259,9 @@ function App() {
           needsUpdate = true;
         }
 
-        // Weekly Marketing Reset
         if (data.marketing?.lastReset !== currentSunday) {
           const resetMarketing = { lastReset: currentSunday };
-          MARKETING_STRATEGY.forEach(section => section.items.forEach(item => resetMarketing[item.id] = false));
+          MARKETING_TASKS.forEach(item => resetMarketing[item.id] = false);
           newData.marketing = resetMarketing;
           needsUpdate = true;
         }
@@ -311,12 +273,11 @@ function App() {
         }
 
       } else {
-        // Init New User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         
         const initialMarketing = { lastReset: getCurrentSunday() };
-        MARKETING_STRATEGY.forEach(section => section.items.forEach(item => initialMarketing[item.id] = false));
+        MARKETING_TASKS.forEach(item => initialMarketing[item.id] = false);
 
         const initialData = {
           gasUrl: '',
@@ -334,6 +295,38 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
+  useEffect(() => {
+    if (!firestoreData.routine) return;
+    const hour = new Date().getHours();
+    let currentBlock = '';
+    
+    if (hour >= 6 && hour < 12) currentBlock = 'morning';
+    else if (hour >= 12 && hour < 17) currentBlock = 'midday';
+    else if (hour >= 17 && hour < 22) currentBlock = 'evening';
+
+    let pending = 0;
+    let urgentPending = 0;
+    
+    DAILY_ROUTINE.forEach(section => {
+      section.items.forEach(item => {
+        if (!firestoreData.routine[item.id]) {
+          pending++;
+          if (section.timeBlock === currentBlock) urgentPending++;
+        }
+      });
+    });
+
+    setPendingTasksCount(pending);
+
+    if (urgentPending > 0) {
+      const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
+      setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
+    } else {
+      setCurrentNotification(null);
+    }
+
+  }, [firestoreData.routine]);
+
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return null;
     try {
@@ -348,8 +341,6 @@ function App() {
   useEffect(() => {
     if (firestoreData.gasUrl) fetchLiveData();
   }, [firestoreData.gasUrl]);
-
-  // --- Handlers ---
 
   const handleSignOut = () => {
     if (auth) {
@@ -369,20 +360,10 @@ function App() {
   const handleMarketingToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.marketing?.[taskId] || false;
-    
-    // Optimistic
-    setFirestoreData(prev => ({ 
-      ...prev, 
-      marketing: { ...prev.marketing, [taskId]: !currentState } 
-    }));
-
+    setFirestoreData(prev => ({ ...prev, marketing: { ...prev.marketing, [taskId]: !currentState } }));
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { 
-      await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); 
-    } catch(err) { 
-      // Fallback
-      if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); 
-    }
+    try { await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); } 
+    catch(err) { if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); }
   };
 
   const handleAddTask = async (e) => {
@@ -498,8 +479,6 @@ function App() {
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
-  // --- RENDERING ---
-  
   if (!isConfigured) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
@@ -527,9 +506,15 @@ function App() {
 
       <main className="p-4 max-w-2xl mx-auto">
         
-        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {currentNotification && (
+              <div onClick={() => setActiveTab('tasks')} className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100 transition-colors">
+                <div className="p-2 bg-orange-100 rounded-full"><Bell className="w-5 h-5 text-orange-600" /></div>
+                <div className="flex-1"><h3 className="font-bold text-orange-800 text-sm">Action Required</h3><p className="text-xs text-orange-700">{currentNotification}</p></div>
+                <div className="text-orange-400">→</div>
+              </div>
+            )}
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div>
               <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2>
@@ -545,7 +530,6 @@ function App() {
           </div>
         )}
 
-        {/* CHAT */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-[calc(100vh-8rem)]">
             <div className="flex-1 overflow-y-auto space-y-4 mb-4 scrollbar-hide">
@@ -564,57 +548,41 @@ function App() {
           </div>
         )}
 
-        {/* MARKETING */}
         {activeTab === 'marketing' && (
           <div className="space-y-6">
             <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-              <h2 className="text-blue-900 font-bold text-lg mb-1 flex items-center gap-2">
-                <Video className="w-5 h-5" /> Weekly Content Strategy
-              </h2>
+              <h2 className="text-blue-900 font-bold text-lg mb-1 flex items-center gap-2"><Video className="w-5 h-5" /> Weekly Content Strategy</h2>
               <p className="text-xs text-blue-700">Resets every Sunday.</p>
             </div>
-            
-            <div className="space-y-6">
-              {MARKETING_STRATEGY.map((section, idx) => (
-                <div key={idx} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className={`p-3 border-b border-slate-100 flex justify-between items-center ${section.bg}`}>
-                    <h3 className={`font-bold text-sm flex items-center gap-2 ${section.color}`}>
-                      <section.icon className="w-4 h-4" /> {section.title}
-                    </h3>
-                  </div>
-                  
-                  <div className="p-3 bg-slate-50 border-b border-slate-100">
-                    <p className="text-xs text-slate-500 italic">{section.instruction}</p>
-                  </div>
-
-                  <div className="divide-y divide-slate-100">
-                    {section.items.map((item) => {
-                      const isDone = firestoreData.marketing?.[item.id] || false;
-                      return (
-                        <div 
-                          key={item.id} 
-                          onClick={() => handleMarketingToggle(item.id)}
-                          className={`p-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50 transition-colors ${isDone ? 'bg-slate-50' : ''}`}
-                        >
-                          {isDone ? (
-                            <CheckSquare className="w-5 h-5 text-green-500 shrink-0" />
-                          ) : (
-                            <div className="w-5 h-5 rounded border-2 border-slate-300 shrink-0" />
-                          )}
-                          <span className={`text-sm ${isDone ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                            {item.label}
-                          </span>
+            <div className="space-y-4">
+              {MARKETING_TASKS.map((task) => {
+                const isDone = firestoreData.marketing?.[task.id] || false;
+                const isStory = task.id.includes('story');
+                return (
+                  <div key={task.id} className={`bg-white rounded-xl border transition-all ${isDone ? 'border-green-200 opacity-70' : 'border-slate-200 shadow-sm'}`}>
+                    <div onClick={() => handleMarketingToggle(task.id)} className="p-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50 rounded-t-xl">
+                      {isDone ? <CheckSquare className="w-6 h-6 text-green-500 mt-1 shrink-0" /> : <div className="w-6 h-6 rounded border-2 border-slate-300 mt-1 shrink-0" />}
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1">
+                          <h3 className={`font-bold ${isDone ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{task.title}</h3>
+                          {isStory && <span className="bg-pink-100 text-pink-600 text-[9px] font-bold px-2 py-0.5 rounded-full">STORY</span>}
                         </div>
-                      );
-                    })}
+                        <p className={`text-sm mt-1 leading-relaxed ${isDone ? 'text-slate-400' : 'text-slate-600'}`}>{task.instruction}</p>
+                      </div>
+                    </div>
+                    {!isDone && (
+                      <div className="px-4 pb-4 pt-0 flex flex-col gap-2">
+                        <div className="flex items-center gap-2"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">{task.platform}</span></div>
+                        <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded italic">💡 {task.why}</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* TASKS */}
         {activeTab === 'tasks' && (
           <div className="space-y-6">
             {DAILY_ROUTINE.map((section, idx) => (
@@ -646,7 +614,6 @@ function App() {
           </div>
         )}
 
-        {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Configuration</h2>
@@ -662,31 +629,17 @@ function App() {
               
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID (Advanced)</label>
-                <input 
-                  value={firestoreData.aiModel} 
-                  onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})}
-                  placeholder="gemini-1.5-flash"
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm"
-                />
+                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
                 <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro or gemini-2.0-flash-exp</p>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
-                <textarea 
-                  value={firestoreData.botInstructions} 
-                  onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
-                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
+                <textarea value={firestoreData.botInstructions} onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})} placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent." className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600" />
                 
-                {/* Data Status Indicator */}
                 <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
                   <Database className="w-3 h-3" />
-                  <span>
-                    Rows Loaded: {liveData?.raw_context?.length || 0}
-                    {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}
-                  </span>
+                  <span>Rows Loaded: {liveData?.raw_context?.length || 0} {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}</span>
                 </div>
               </div>
 
@@ -697,15 +650,15 @@ function App() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
-        {/* Navigation Items */}
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
           { id: 'chat', icon: MessageSquare, label: 'Chat' },
-          { id: 'marketing', icon: Video, label: 'Content' }, // NEW TAB
-          { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+          { id: 'marketing', icon: Video, label: 'Content' },
+          { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
+            {item.badge && <span className="absolute top-2 right-4 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
