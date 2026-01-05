@@ -1,44 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  LayoutDashboard, 
-  CheckSquare, 
-  Settings, 
-  Plus, 
-  Trash2, 
-  RefreshCw,
-  Loader2,
-  TrendingUp,
-  AlertCircle,
-  LogOut,
-  Mail,
-  Lock,
-  UserPlus,
-  LogIn,
-  Brain,
-  Cpu,
-  Database,
-  Video,
-  Scissors,
-  Camera,
-  Smartphone,
-  Bell
+  LayoutDashboard, MessageSquare, CheckSquare, Settings, Send, Plus, Trash2, 
+  RefreshCw, Loader2, TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, 
+  LogIn, Brain, Cpu, Database, Video, Scissors, Camera, Smartphone, Bell,
+  CalendarCheck
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
+  getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
+  onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
-  getFirestore, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  updateDoc, 
-  arrayUnion, 
-  arrayRemove 
+  getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove 
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
@@ -51,10 +24,10 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
-// Initialize Firebase
 let app, auth, db;
 let isConfigured = false;
 
@@ -74,6 +47,7 @@ const DAILY_ROUTINE = [
   {
     title: '☀️ Morning Kickoff',
     timeBlock: 'morning',
+    notifyAt: '09:30',
     items: [
       { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
       { id: 'm_team', label: 'Go see team (get photo/video)' }
@@ -82,6 +56,7 @@ const DAILY_ROUTINE = [
   {
     title: '☕ Midday Check-in',
     timeBlock: 'midday',
+    notifyAt: '12:30',
     items: [
       { id: 'mid_texts', label: 'Check texts for updates' },
       { id: 'mid_va', label: 'Check items from VA' }
@@ -90,8 +65,11 @@ const DAILY_ROUTINE = [
   {
     title: '🌙 Close Down',
     timeBlock: 'evening',
+    notifyAt: '16:00',
     items: [
-      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' }
+      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
+      { id: 'close_texts', label: 'Check text messages' },
+      { id: 'close_va', label: 'Check VA messages' }
     ]
   }
 ];
@@ -100,8 +78,8 @@ const SHOOTING_LIST = [
   { id: 'shot_a', title: 'Shot A: The Arrival', desc: 'Van pulling up or walking up drive.', time: '15 secs' },
   { id: 'shot_b', title: 'Shot B: Squeegee/Brush Close-up', desc: 'Pure cleaning action. Focus on sound.', time: '5 mins total' },
   { id: 'shot_c', title: 'Shot C: The "Odd Job"', desc: 'Cleaning a local sign, postbox, or bench.', time: '30 secs' },
-  { id: 'shot_d', title: 'Shot D: The Service Promise', desc: 'Talk to camera: "24h re-clean guarantee..."', time: '30 secs' },
-  { id: 'shot_e', title: 'Shot E: The Virtual Quote', desc: 'Walkaround of 3-bed/4-bed. State price.', time: '60 secs' },
+  { id: 'shot_d', title: 'Shot D: Service Promise', desc: 'Talk to camera: "24h re-clean guarantee..."', time: '30 secs' },
+  { id: 'shot_e', title: 'Shot E: Virtual Quote', desc: 'Walkaround of 3-bed/4-bed. State price.', time: '60 secs' },
   { id: 'shot_f', title: 'Shot F: Before/Afters', desc: '5 sets of static photos from exact same angle.', time: 'Photos' }
 ];
 
@@ -153,21 +131,24 @@ const EDITING_STRATEGY = {
   }
 };
 
-// Helper to get the Sunday of the current week (for resets)
-const getCurrentSunday = () => {
+// --- HELPERS ---
+
+// Robust "Week of Sunday" Calculator
+// Returns the date string (YYYY-MM-DD) of the Sunday that started the current week
+const getWeeklyResetDate = () => {
   const d = new Date();
   const day = d.getDay(); // 0 is Sunday
   const diff = d.getDate() - day; 
   const sunday = new Date(d.setDate(diff));
+  // Reset time to avoid mismatch
+  sunday.setHours(0,0,0,0);
   return sunday.toISOString().split('T')[0];
 };
 
 const KPICard = ({ title, value, subtext, alert }) => (
   <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
     <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>
-      {value}
-    </h3>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
     {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
   </div>
 );
@@ -185,10 +166,7 @@ const ProgressBar = ({ current, target, label }) => {
         </div>
       </div>
       <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${percentage}%` }}
-        />
+        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   );
@@ -245,10 +223,11 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [marketingDay, setMarketingDay] = useState('Mon'); 
+  const [marketingDay, setMarketingDay] = useState('Mon');
   const [liveData, setLiveData] = useState(null); 
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [currentNotification, setCurrentNotification] = useState(null);
+  const [notifPermission, setNotifPermission] = useState('default');
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -259,6 +238,11 @@ function App() {
     botInstructions: '',
     aiModel: 'gemini-1.5-flash'
   });
+
+  const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
+  const [chatInput, setChatInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
     if (!isConfigured || !auth) {
@@ -279,7 +263,7 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
-        const currentSunday = getCurrentSunday();
+        const currentSunday = getWeeklyResetDate();
 
         if (!data.gasUrl) data.gasUrl = '';
         
@@ -294,8 +278,9 @@ function App() {
           needsUpdate = true;
         }
 
-        // Weekly Marketing Reset
-        if (data.marketing?.lastReset !== currentSunday) {
+        // Weekly Marketing Reset (Corrected Logic)
+        // If stored reset date is BEFORE the current week's Sunday, triggers reset.
+        if (!data.marketing?.lastReset || data.marketing.lastReset < currentSunday) {
           const resetMarketing = { lastReset: currentSunday };
           SHOOTING_LIST.forEach(item => resetMarketing[item.id] = false);
           ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(d => resetMarketing[`edit_${d}`] = false);
@@ -314,7 +299,7 @@ function App() {
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         
-        const initialMarketing = { lastReset: getCurrentSunday() };
+        const initialMarketing = { lastReset: getWeeklyResetDate() };
         SHOOTING_LIST.forEach(item => initialMarketing[item.id] = false);
         ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(d => initialMarketing[`edit_${d}`] = false);
 
@@ -334,38 +319,73 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- NOTIFICATION LOGIC ---
+  // --- NOTIFICATION & BADGE LOGIC ---
   useEffect(() => {
     if (!firestoreData.routine) return;
 
-    const hour = new Date().getHours();
-    let currentBlock = '';
-    if (hour >= 6 && hour < 12) currentBlock = 'morning';
-    else if (hour >= 12 && hour < 17) currentBlock = 'midday';
-    else if (hour >= 17 && hour < 22) currentBlock = 'evening';
+    const checkNotifications = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
-    let pending = 0;
-    let urgentPending = 0;
-    
-    DAILY_ROUTINE.forEach(section => {
-      section.items.forEach(item => {
-        if (!firestoreData.routine[item.id]) {
-          pending++;
-          if (section.timeBlock === currentBlock) urgentPending++;
-        }
+      let currentBlock = '';
+      if (hour >= 6 && hour < 12) currentBlock = 'morning';
+      else if (hour >= 12 && hour < 17) currentBlock = 'midday';
+      else if (hour >= 17 && hour < 22) currentBlock = 'evening';
+
+      let pending = 0;
+      let urgentPending = 0;
+      
+      DAILY_ROUTINE.forEach(section => {
+        section.items.forEach(item => {
+          if (!firestoreData.routine[item.id]) {
+            pending++;
+            if (section.timeBlock === currentBlock) urgentPending++;
+            
+            // Check for specific notification times
+            if (section.notifyAt === timeStr && 'Notification' in window && Notification.permission === 'granted') {
+               new Notification(section.title, { body: `You have outstanding tasks for ${section.title}!` });
+            }
+          }
+        });
       });
-    });
 
-    setPendingTasksCount(pending);
+      setPendingTasksCount(pending);
 
-    if (urgentPending > 0) {
-      const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
-      setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
-    } else {
-      setCurrentNotification(null);
-    }
+      if (urgentPending > 0) {
+        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
+        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
+      } else {
+        setCurrentNotification(null);
+      }
+    };
+
+    // Check immediately and then every minute
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 60000);
+    return () => clearInterval(interval);
 
   }, [firestoreData.routine]);
+
+  // Check Notification Permission on Mount
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotifPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      alert("This browser does not support notifications.");
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotifPermission(permission);
+    if (permission === 'granted') {
+      new Notification("Notifications Enabled", { body: "You will be prompted at 9:30, 12:30, and 16:00 if tasks are pending." });
+    }
+  };
 
   const fetchLiveData = async () => {
     if (!firestoreData.gasUrl) return null;
@@ -465,6 +485,66 @@ function App() {
     return arr.map(row => row.join(",")).join("\n");
   };
 
+  const handleSendMessage = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = { role: 'user', text: chatInput };
+    setMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setIsTyping(true);
+
+    let currentData = liveData;
+    try {
+        const freshData = await fetchLiveData();
+        if (freshData) currentData = freshData;
+    } catch (e) {}
+
+    const rawCSV = arrayToCSV(currentData?.raw_context || []);
+
+    const systemPrompt = `
+      You are versaBOT, a business assistant.
+      USER RULES: ${firestoreData.botInstructions || "None."}
+      FINANCIALS: ${JSON.stringify(currentData?.financials || {})}
+      CONTEXT (CSV): ${rawCSV}
+      Answer concisely in GBP (£).
+    `;
+
+    const modelId = firestoreData.aiModel || 'gemini-1.5-flash';
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); 
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg.text }] }] }),
+          signal: controller.signal
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      const data = await response.json();
+      
+      if (data.error) {
+        setMessages(prev => [...prev, { role: 'ai', text: `API Error: ${data.error.message}` }]);
+      } else {
+        const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
+        setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages(prev => [...prev, { role: 'ai', text: "Request Timed Out. Data might be too large." }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: "Connection Error. Please check internet." }]);
+      }
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, activeTab]);
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
   // --- RENDERING ---
@@ -505,7 +585,7 @@ function App() {
                 className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100 transition-colors"
               >
                 <div className="p-2 bg-orange-100 rounded-full">
-                  <Bell className="w-5 h-5 text-orange-600" />
+                  <Bell className="w-5 h-5 text-orange-600 animate-bounce" />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-bold text-orange-800 text-sm">Action Required</h3>
@@ -688,34 +768,21 @@ function App() {
                 <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               </div>
               
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID (Advanced)</label>
-                <input 
-                  value={firestoreData.aiModel} 
-                  onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})}
-                  placeholder="gemini-1.5-flash"
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">If the bot stops working, try: gemini-1.5-pro or gemini-2.0-flash-exp</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Brain className="w-4 h-4" /> Bot Instructions (Memory)</label>
-                <textarea 
-                  value={firestoreData.botInstructions} 
-                  onChange={(e) => setFirestoreData({...firestoreData, botInstructions: e.target.value})}
-                  placeholder="e.g., Active customers have 'Live' in Column C. Treat 'Skip' messages as urgent."
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-                
-                {/* Data Status Indicator */}
-                <div className="mt-2 p-2 bg-slate-100 rounded text-[10px] text-slate-500 flex items-center gap-2">
-                  <Database className="w-3 h-3" />
-                  <span>
-                    Rows Loaded: {liveData?.raw_context?.length || 0}
-                    {(!liveData?.raw_context || liveData.raw_context.length === 0) && " (Warning: Check Google Sheet)"}
-                  </span>
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2">
+                  <Bell className="w-4 h-4" /> Notifications
+                </label>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-600">Get alerts for pending tasks?</span>
+                  <button 
+                    type="button"
+                    onClick={requestNotificationPermission}
+                    className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${notifPermission === 'granted' ? 'bg-green-100 text-green-700' : 'bg-blue-600 text-white'}`}
+                  >
+                    {notifPermission === 'granted' ? 'Enabled' : 'Enable'}
+                  </button>
                 </div>
+                <p className="text-[10px] text-slate-400 mt-2">Alerts at 09:30, 12:30, 16:00.</p>
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
