@@ -132,7 +132,8 @@ const DEFAULT_EDITING_STRATEGY = {
 };
 
 // --- HELPERS ---
-const getCurrentSunday = () => {
+// Fixed function name to match call site
+const getWeeklyResetDate = () => {
   const d = new Date();
   const day = d.getDay(); 
   const diff = d.getDate() - day; 
@@ -241,16 +242,11 @@ function App() {
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
     marketing: { lastReset: '' },
-    contentStrategy: null, // Stores the editable content
+    contentStrategy: null,
     adhocTasks: [],
     botInstructions: '',
     aiModel: 'gemini-1.5-flash'
   });
-
-  const [messages, setMessages] = useState([{ role: 'system', text: 'Hello! I am ready to analyze your business data.' }]);
-  const [chatInput, setChatInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null);
 
   useEffect(() => {
     if (!isConfigured || !auth) {
@@ -426,6 +422,7 @@ function App() {
 
   // --- MAIN HANDLERS ---
   const handleSignOut = () => { if (auth) signOut(auth).catch(e => console.error(e)); };
+  
   const handleRoutineToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.routine?.[taskId] || false;
