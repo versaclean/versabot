@@ -72,36 +72,7 @@ const DAILY_ROUTINE = [
   }
 ];
 
-// --- COMPONENTS (DASHBOARD) ---
-
-const KPICard = ({ title, value, subtext, alert }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
-    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
-    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
-  </div>
-);
-
-const ProgressBar = ({ current, target, label }) => {
-  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
-  return (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
-      <div className="flex justify-between items-end mb-2">
-        <div className="flex justify-between w-full">
-            <span className="text-sm font-medium text-slate-700">{label}</span>
-            <span className="text-xs text-slate-500">
-            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
-            </span>
-        </div>
-      </div>
-      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
-      </div>
-    </div>
-  );
-};
-
-// --- COMPONENTS (ANALYTICS) ---
+// --- COMPONENTS ---
 
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
@@ -191,7 +162,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
-  const [analytics, setAnalytics] = useState(null); 
+  const [analytics, setAnalytics] = useState(null);
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [currentNotification, setCurrentNotification] = useState(null);
 
@@ -248,7 +219,7 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- ANALYTICS PROCESSING ---
+  // --- DATA PROCESSING (ANALYTICS ENGINE) ---
   const processMarketingData = (rawData) => {
     if (!rawData || rawData.length < 2) return null;
 
@@ -256,8 +227,9 @@ function App() {
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
-        lastDone: headers.indexOf('last done'),
+        lastDone: headers.indexOf('last done'), // Used for lost date
         state: headers.indexOf('state'),
+        jobState: headers.indexOf('job state'), // Needed for "Empty" check
         service: headers.indexOf('services'),
         freq: headers.indexOf('frequency')
     };
@@ -266,49 +238,61 @@ function App() {
 
     const sources = {};
     const validSources = ['LSA', 'Facebook Ads', 'Website', 'Leaflet', 'Canvassed', 'Social Media', 'Google'];
+
+    // Initialize map
     validSources.forEach(s => sources[s] = { active: 0, churn: 0, lifespans: [] });
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
-        const rawSource = row[idx.source]?.toString().trim() || 'Other';
-        let sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
         
-        const state = row[idx.state]?.toString().toLowerCase() || '';
+        // --- 1. DATE FILTER (2026+) ---
+        const createdDate = new Date(row[idx.created]);
+        if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
+            continue; // Skip pre-2026 data
+        }
+
+        const rawSource = row[idx.source]?.toString().trim() || 'Other';
+        // Normalize source name or bucket into 'Other'
+        const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
+        
+        const state = row[idx.state]?.toString().trim().toLowerCase() || '';
+        const jobState = row[idx.jobState]?.toString().trim().toLowerCase() || '';
         const service = row[idx.service]?.toString().toLowerCase() || '';
         const freq = row[idx.freq]?.toString().toLowerCase() || '';
 
-        // Criteria: Window Cleaning + 4/8 weeks frequency
+        // Criteria: Window Cleaning + 4/8 weeks
         const isWindowCleaning = service.includes('window cleaning'); 
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
-            if (state === 'active') {
+            // --- 2. ACTIVE CRITERIA: State='Active' AND JobState='Empty' ---
+            if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
-            } else if (state === 'inactive') {
+            } 
+            // --- 3. CHURN CRITERIA: State='Inactive' ---
+            else if (state === 'inactive') {
                 sources[sourceKey].churn++;
-                // Calculate lifespan
-                const created = new Date(row[idx.created]);
+                
+                // Calculate Lifespan (Months)
                 const last = new Date(row[idx.lastDone]);
-                if (!isNaN(created) && !isNaN(last)) {
-                    let months = (last.getFullYear() - created.getFullYear()) * 12 + (last.getMonth() - created.getMonth());
+                if (!isNaN(last)) {
+                    const months = (last.getFullYear() - createdDate.getFullYear()) * 12 + (last.getMonth() - createdDate.getMonth());
                     if (months > 0) sources[sourceKey].lifespans.push(months);
                 }
             }
         }
     }
 
-    return Object.entries(sources)
-        .map(([name, data]) => ({
-            name,
-            active: data.active,
-            churn: data.churn,
-            total: data.active + data.churn,
-            retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
-            avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
-        }))
-        .filter(s => s.total > 0)
-        .sort((a,b) => b.active - a.active);
+    // Convert to Array for rendering
+    return Object.entries(sources).map(([name, data]) => ({
+        name,
+        active: data.active,
+        churn: data.churn,
+        total: data.active + data.churn,
+        retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
+        avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
+    })).sort((a,b) => b.active - a.active); // Sort by active count
   };
 
   const fetchLiveData = async () => {
@@ -357,8 +341,10 @@ function App() {
         });
       });
       setPendingTasksCount(pending);
-      if (urgentPending > 0) setCurrentNotification(`${urgentPending} tasks pending!`);
-      else setCurrentNotification(null);
+      if (urgentPending > 0) {
+        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
+        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
+      } else setCurrentNotification(null);
     };
     checkNotifications();
     const interval = setInterval(checkNotifications, 60000);
@@ -446,7 +432,7 @@ function App() {
           <div className="space-y-6">
              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg">
                 <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2>
-                <p className="text-xs opacity-70">Track source performance & churn</p>
+                <p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p>
              </div>
 
              {!analytics ? (
