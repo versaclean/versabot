@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, CheckSquare, Settings, RefreshCw, Loader2, 
-  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, 
-  BarChart3, PieChart, Users, Database, Bell
+  LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
+  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
+  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -72,7 +72,36 @@ const DAILY_ROUTINE = [
   }
 ];
 
-// --- COMPONENTS ---
+// --- COMPONENTS (DASHBOARD) ---
+
+const KPICard = ({ title, value, subtext, alert }) => (
+  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
+    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
+  </div>
+);
+
+const ProgressBar = ({ current, target, label }) => {
+  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
+      <div className="flex justify-between items-end mb-2">
+        <div className="flex justify-between w-full">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-xs text-slate-500">
+            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
+            </span>
+        </div>
+      </div>
+      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
+      </div>
+    </div>
+  );
+};
+
+// --- COMPONENTS (ANALYTICS) ---
 
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
@@ -86,9 +115,7 @@ const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
 );
 
 const SourceRow = ({ source, data }) => {
-  // Determine retention color
   const retColor = data.retentionRate >= 90 ? 'text-green-600' : data.retentionRate >= 75 ? 'text-yellow-600' : 'text-red-600';
-  
   return (
     <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
       <div className="flex justify-between items-start mb-2">
@@ -164,10 +191,9 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
-  const [analytics, setAnalytics] = useState(null);
+  const [analytics, setAnalytics] = useState(null); 
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [currentNotification, setCurrentNotification] = useState(null);
-  const [notifPermission, setNotifPermission] = useState('default');
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -195,8 +221,10 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
+
         if (!data.gasUrl) data.gasUrl = '';
         
+        // Routine Reset Check
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -205,11 +233,14 @@ function App() {
           setFirestoreData(prev => ({ ...prev, ...data })); 
         }
       } else {
+        // Init User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
-          gasUrl: '', targets: { monthly: 20000, weekly: 5000 },
-          routine: initialRoutine, adhocTasks: [],
+          gasUrl: '',
+          targets: { monthly: 20000, weekly: 5000 },
+          routine: initialRoutine,
+          adhocTasks: [],
         });
         setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, routine: initialRoutine, adhocTasks: [] });
       }
@@ -276,7 +307,7 @@ function App() {
             retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
             avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
         }))
-        .filter(s => s.total > 0) // Only show sources with data
+        .filter(s => s.total > 0)
         .sort((a,b) => b.active - a.active);
   };
 
@@ -326,24 +357,17 @@ function App() {
         });
       });
       setPendingTasksCount(pending);
-      if (urgentPending > 0) {
-        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
-        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
-      } else setCurrentNotification(null);
+      if (urgentPending > 0) setCurrentNotification(`${urgentPending} tasks pending!`);
+      else setCurrentNotification(null);
     };
     checkNotifications();
     const interval = setInterval(checkNotifications, 60000);
     return () => clearInterval(interval);
   }, [firestoreData.routine]);
 
-  useEffect(() => {
-    if ('Notification' in window) setNotifPermission(Notification.permission);
-  }, []);
-
   const requestNotificationPermission = async () => {
     if (!('Notification' in window)) return;
     const permission = await Notification.requestPermission();
-    setNotifPermission(permission);
   };
 
   // --- HANDLERS ---
@@ -468,8 +492,7 @@ function App() {
               
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bell className="w-4 h-4" /> Notifications</label>
-                <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${notifPermission === 'granted' ? 'bg-green-100 text-green-700' : 'bg-blue-600 text-white'}`}>{notifPermission === 'granted' ? 'Enabled' : 'Enable'}</button></div>
-                <p className="text-[10px] text-slate-400 mt-2">Alerts at 09:30, 12:30, 16:00.</p>
+                <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-blue-600 text-white">Request Permission</button></div>
               </div>
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
