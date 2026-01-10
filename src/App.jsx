@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, MessageSquare, CheckSquare, Settings, Send, Plus, Trash2, 
-  RefreshCw, Loader2, TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, 
-  LogIn, Brain, Cpu, Database, Video, Scissors, Camera, Smartphone, Bell,
-  Save, Edit2
+  LayoutDashboard, CheckSquare, Settings, RefreshCw, Loader2, 
+  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, 
+  BarChart3, PieChart, Users, Database, Bell
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -24,7 +23,6 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
 const APP_ID = 'versabot-pwa-v1';
 
@@ -74,111 +72,45 @@ const DAILY_ROUTINE = [
   }
 ];
 
-const DEFAULT_SHOOTING_LIST = [
-  { id: 'shot_a', title: 'Shot A: The Arrival', desc: 'Van pulling up or walking up drive.', time: '15 secs' },
-  { id: 'shot_b', title: 'Shot B: Squeegee/Brush Close-up', desc: 'Pure cleaning action. Focus on sound.', time: '5 mins total' },
-  { id: 'shot_c', title: 'Shot C: The "Odd Job"', desc: 'Cleaning a local sign, postbox, or bench.', time: '30 secs' },
-  { id: 'shot_d', title: 'Shot D: Service Promise', desc: 'Talk to camera: "24h re-clean guarantee..."', time: '30 secs' },
-  { id: 'shot_e', title: 'Shot E: Virtual Quote', desc: 'Walkaround of 3-bed/4-bed. State price.', time: '60 secs' },
-  { id: 'shot_f', title: 'Shot F: Before/Afters', desc: '5 sets of static photos from exact same angle.', time: 'Photos' }
-];
+// --- COMPONENTS ---
 
-const DEFAULT_EDITING_STRATEGY = {
-  Mon: {
-    title: 'The "Satisfying" Hook',
-    subject: 'Close-up of heavy dirt being removed (Glass/Frames).',
-    platforms: [
-      { name: 'TikTok', style: 'Jump Cuts. <10s.', audio: 'Raw Sound Only', text: 'Yellow Text: "Satisfying? 🤤" #asmr #windowcleaning' },
-      { name: 'Instagram', style: 'Continuous 15s shot. Vibrant filter.', audio: 'Trending Chill (15%)', text: '"Monday Morning Views" #[Town] #cleaningmotivation' },
-      { name: 'Facebook', style: 'Split Screen (Dirty top/Clean bottom).', audio: 'N/A', text: '"Starting the week right in [Town]! Who needs a clear view?"' }
-    ]
-  },
-  Tue: {
-    title: 'The "Team & Arrival"',
-    subject: 'Team arriving at house and setting up.',
-    platforms: [
-      { name: 'TikTok', style: 'POV. Fast-forward walking.', audio: 'Upbeat, fast-paced.', text: '"POV: You hired the best in [Town]" #dayinthelife #smallbiz' },
-      { name: 'Instagram', style: 'Aesthetic B-Roll. Slow-mo uniform/logo.', audio: 'Motivational Music', text: 'Use Location Sticker for [Town]' },
-      { name: 'Facebook', style: 'Photo of van on nice street.', audio: 'N/A', text: '"Look out for the van in [Street/Area] today! 👋"' }
-    ]
-  },
-  Wed: {
-    title: 'The "Hero" Odd-Job',
-    subject: 'Cleaning a local sign, postbox, or bench.',
-    platforms: [
-      { name: 'TikTok', style: 'Transformation. 2s dirt -> Flash -> Clean.', audio: 'Wow/Surprise Sound', text: '"Giving back to [Town]" #community #restoration' },
-      { name: 'Instagram', style: 'Before & After Slider (2 slides).', audio: 'Calm, rhythmic beat', text: '"Local restoration project. Love where you live."' },
-      { name: 'Facebook', style: 'Full video (30-60s). Explain why.', audio: 'Voiceover', text: 'Share to 3 local groups: "Thought [Sign] needed TLC! Hope you like it."' }
-    ]
-  },
-  Thu: {
-    title: 'The "Pro Knowledge"',
-    subject: 'Explaining kit (Pure water, poles, rain).',
-    platforms: [
-      { name: 'TikTok', style: 'Green Screen over rainy window.', audio: 'Voiceover + Auto-Captions', text: '"Window Cleaner Secrets 🤫"' },
-      { name: 'Instagram', style: 'Educational Reel (3-4 clips).', audio: 'Low background music', text: 'Question Sticker: "Did you know this?"' },
-      { name: 'Facebook', style: 'Long post with kit photo.', audio: 'N/A', text: '"Why we don\'t use tap water... (and why it saves you money)."' }
-    ]
-  },
-  Fri: {
-    title: 'The "Virtual Quote"',
-    subject: 'Walking around a house stating price.',
-    platforms: [
-      { name: 'TikTok', style: 'Fast-paced. Cut to windows.', audio: 'Business/Money Theme', text: '"How much for a 3-bed semi?" #pricing #transparency' },
-      { name: 'Instagram', style: 'Professional/Bright. Text boxes.', audio: 'Professional Upbeat', text: '"DM for a custom quote 📩"' },
-      { name: 'Facebook', style: 'No edits. Continuous walkaround.', audio: 'Raw Authenticity', text: '"Example pricing for [House] in [Town]. 2 slots left!"' }
-    ]
-  }
-};
-
-// --- HELPERS ---
-// Fixed function name to match call site
-const getWeeklyResetDate = () => {
-  const d = new Date();
-  const day = d.getDay(); 
-  const diff = d.getDate() - day; 
-  const sunday = new Date(d.setDate(diff));
-  sunday.setHours(0,0,0,0);
-  return sunday.toISOString().split('T')[0];
-};
-
-const KPICard = ({ title, value, subtext, alert }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
-    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
-    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
+const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
+  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
+    <div>
+      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{label}</p>
+      <h3 className={`text-2xl font-bold text-slate-800`}>{value}</h3>
+      {subtext && <p className={`text-xs mt-1 font-medium ${color}`}>{subtext}</p>}
+    </div>
+    {Icon && <div className={`p-2 rounded-lg bg-${color.split('-')[1]}-50 text-${color.split('-')[1]}-500`}><Icon className="w-5 h-5" /></div>}
   </div>
 );
 
-const ProgressBar = ({ current, target, label }) => {
-  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+const SourceRow = ({ source, data }) => {
+  // Determine retention color
+  const retColor = data.retentionRate >= 90 ? 'text-green-600' : data.retentionRate >= 75 ? 'text-yellow-600' : 'text-red-600';
+  
   return (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
-      <div className="flex justify-between items-end mb-2">
-        <div className="flex justify-between w-full">
-            <span className="text-sm font-medium text-slate-700">{label}</span>
-            <span className="text-xs text-slate-500">
-            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
-            </span>
+    <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
+      <div className="flex justify-between items-start mb-2">
+        <h4 className="font-bold text-slate-800 text-sm">{source}</h4>
+        <div className="flex flex-col items-end">
+             <span className={`text-sm font-bold ${retColor}`}>{data.retentionRate}% Ret.</span>
+             <span className="text-[10px] text-slate-400">{data.avgLifetime}mo avg life</span>
         </div>
       </div>
-      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
+      <div className="flex gap-2">
+         <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+            <p className="text-[10px] text-blue-500 font-bold uppercase">Active</p>
+            <p className="text-lg font-bold text-blue-700">{data.active}</p>
+         </div>
+         <div className="flex-1 bg-red-50 rounded-lg p-2 text-center">
+            <p className="text-[10px] text-red-500 font-bold uppercase">Churn</p>
+            <p className="text-lg font-bold text-red-700">{data.churn}</p>
+         </div>
       </div>
     </div>
   );
 };
-
-// Reusable Editable Input
-const EditableText = ({ value, onChange, onBlur, className, placeholder }) => (
-  <input
-    value={value}
-    onChange={onChange}
-    onBlur={onBlur}
-    placeholder={placeholder}
-    className={`bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none transition-colors w-full ${className}`}
-  />
-);
 
 const LoginScreen = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -231,8 +163,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [marketingDay, setMarketingDay] = useState('Mon'); 
   const [liveData, setLiveData] = useState(null); 
+  const [analytics, setAnalytics] = useState(null);
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [currentNotification, setCurrentNotification] = useState(null);
   const [notifPermission, setNotifPermission] = useState('default');
@@ -241,11 +173,7 @@ function App() {
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     routine: { lastReset: '' }, 
-    marketing: { lastReset: '' },
-    contentStrategy: null,
     adhocTasks: [],
-    botInstructions: '',
-    aiModel: 'gemini-1.5-flash'
   });
 
   useEffect(() => {
@@ -267,100 +195,111 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         const today = new Date().toISOString().split('T')[0];
-        const currentSunday = getWeeklyResetDate();
-
         if (!data.gasUrl) data.gasUrl = '';
         
-        let needsUpdate = false;
-        let newData = { ...data };
-
-        // Ensure Content Strategy exists
-        if (!data.contentStrategy) {
-          newData.contentStrategy = {
-            shootingList: DEFAULT_SHOOTING_LIST,
-            editingSchedule: DEFAULT_EDITING_STRATEGY
-          };
-          needsUpdate = true;
-        }
-
-        // Daily Routine Reset
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
-          newData.routine = resetRoutine;
-          needsUpdate = true;
-        }
-
-        // Weekly Marketing Reset
-        if (!data.marketing?.lastReset || data.marketing.lastReset < currentSunday) {
-          const resetMarketing = { lastReset: currentSunday };
-          DEFAULT_SHOOTING_LIST.forEach(item => resetMarketing[item.id] = false);
-          ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(d => resetMarketing[`edit_${d}`] = false);
-          newData.marketing = resetMarketing;
-          needsUpdate = true;
-        }
-
-        if (needsUpdate) {
-          updateDoc(docRef, newData);
+          updateDoc(docRef, { routine: resetRoutine });
         } else {
           setFirestoreData(prev => ({ ...prev, ...data })); 
         }
-
       } else {
-        // Init New User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
-        
-        const initialMarketing = { lastReset: getWeeklyResetDate() };
-        DEFAULT_SHOOTING_LIST.forEach(item => initialMarketing[item.id] = false);
-        ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].forEach(d => initialMarketing[`edit_${d}`] = false);
-
-        const initialData = {
-          gasUrl: '',
-          targets: { monthly: 20000, weekly: 5000 },
-          routine: initialRoutine,
-          marketing: initialMarketing,
-          contentStrategy: {
-            shootingList: DEFAULT_SHOOTING_LIST,
-            editingSchedule: DEFAULT_EDITING_STRATEGY
-          },
-          adhocTasks: [],
-          botInstructions: '',
-          aiModel: 'gemini-1.5-flash'
-        };
-        setDoc(docRef, initialData);
-        setFirestoreData(initialData);
+        setDoc(docRef, {
+          gasUrl: '', targets: { monthly: 20000, weekly: 5000 },
+          routine: initialRoutine, adhocTasks: [],
+        });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, routine: initialRoutine, adhocTasks: [] });
       }
     });
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- CONTENT EDIT HANDLERS ---
-  const saveContentStrategy = async () => {
-    if (!user || !firestoreData.contentStrategy) return;
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { contentStrategy: firestoreData.contentStrategy });
+  // --- ANALYTICS PROCESSING ---
+  const processMarketingData = (rawData) => {
+    if (!rawData || rawData.length < 2) return null;
+
+    const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
+    const idx = {
+        source: headers.indexOf('source'),
+        created: headers.indexOf('created'),
+        lastDone: headers.indexOf('last done'),
+        state: headers.indexOf('state'),
+        service: headers.indexOf('services'),
+        freq: headers.indexOf('frequency')
+    };
+
+    if (idx.source === -1 || idx.state === -1) return null;
+
+    const sources = {};
+    const validSources = ['LSA', 'Facebook Ads', 'Website', 'Leaflet', 'Canvassed', 'Social Media', 'Google'];
+    validSources.forEach(s => sources[s] = { active: 0, churn: 0, lifespans: [] });
+    sources['Other'] = { active: 0, churn: 0, lifespans: [] };
+
+    for (let i = 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        const rawSource = row[idx.source]?.toString().trim() || 'Other';
+        let sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
+        
+        const state = row[idx.state]?.toString().toLowerCase() || '';
+        const service = row[idx.service]?.toString().toLowerCase() || '';
+        const freq = row[idx.freq]?.toString().toLowerCase() || '';
+
+        // Criteria: Window Cleaning + 4/8 weeks frequency
+        const isWindowCleaning = service.includes('window cleaning'); 
+        const isValidFreq = freq.includes('4') || freq.includes('8');
+
+        if (isWindowCleaning && isValidFreq) {
+            if (state === 'active') {
+                sources[sourceKey].active++;
+            } else if (state === 'inactive') {
+                sources[sourceKey].churn++;
+                // Calculate lifespan
+                const created = new Date(row[idx.created]);
+                const last = new Date(row[idx.lastDone]);
+                if (!isNaN(created) && !isNaN(last)) {
+                    let months = (last.getFullYear() - created.getFullYear()) * 12 + (last.getMonth() - created.getMonth());
+                    if (months > 0) sources[sourceKey].lifespans.push(months);
+                }
+            }
+        }
+    }
+
+    return Object.entries(sources)
+        .map(([name, data]) => ({
+            name,
+            active: data.active,
+            churn: data.churn,
+            total: data.active + data.churn,
+            retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
+            avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
+        }))
+        .filter(s => s.total > 0) // Only show sources with data
+        .sort((a,b) => b.active - a.active);
   };
 
-  const updateShootingList = (index, field, val) => {
-    const newList = [...firestoreData.contentStrategy.shootingList];
-    newList[index][field] = val;
-    setFirestoreData(prev => ({ ...prev, contentStrategy: { ...prev.contentStrategy, shootingList: newList } }));
+  const fetchLiveData = async () => {
+    if (!firestoreData.gasUrl) return null;
+    try {
+      const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
+      const res = await fetch(secureUrl);
+      const data = await res.json();
+      if (!data.error) {
+        setLiveData(data);
+        if (data.marketing_raw) {
+            const processed = processMarketingData(data.marketing_raw);
+            setAnalytics(processed);
+        }
+      }
+      return data;
+    } catch (error) { return null; }
   };
 
-  const updateEditingSchedule = (day, field, val) => {
-    const newSchedule = { ...firestoreData.contentStrategy.editingSchedule };
-    newSchedule[day][field] = val;
-    setFirestoreData(prev => ({ ...prev, contentStrategy: { ...prev.contentStrategy, editingSchedule: newSchedule } }));
-  };
+  useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
 
-  const updatePlatformDetail = (day, pIdx, field, val) => {
-    const newSchedule = { ...firestoreData.contentStrategy.editingSchedule };
-    newSchedule[day].platforms[pIdx][field] = val;
-    setFirestoreData(prev => ({ ...prev, contentStrategy: { ...prev.contentStrategy, editingSchedule: newSchedule } }));
-  };
-
-  // --- NOTIFICATION & FETCH LOGIC ---
+  // --- NOTIFICATIONS ---
   useEffect(() => {
     if (!firestoreData.routine) return;
     const checkNotifications = () => {
@@ -407,38 +346,15 @@ function App() {
     setNotifPermission(permission);
   };
 
-  const fetchLiveData = async () => {
-    if (!firestoreData.gasUrl) return null;
-    try {
-      const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
-      const res = await fetch(secureUrl);
-      const data = await res.json();
-      if (!data.error) setLiveData(data);
-      return data;
-    } catch (error) { return null; }
-  };
-
-  useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
-
-  // --- MAIN HANDLERS ---
-  const handleSignOut = () => { if (auth) signOut(auth).catch(e => console.error(e)); };
+  // --- HANDLERS ---
+  const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   
   const handleRoutineToggle = async (taskId) => {
     if (!user) return;
     const currentState = firestoreData.routine?.[taskId] || false;
     setFirestoreData(prev => ({ ...prev, routine: { ...prev.routine, [taskId]: !currentState } }));
     const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } 
-    catch(err) { if (err.code === 'not-found') await setDoc(docRef, { routine: { [taskId]: !currentState } }, { merge: true }); }
-  };
-
-  const handleMarketingToggle = async (taskId) => {
-    if (!user) return;
-    const currentState = firestoreData.marketing?.[taskId] || false;
-    setFirestoreData(prev => ({ ...prev, marketing: { ...prev.marketing, [taskId]: !currentState } }));
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { await updateDoc(docRef, { [`marketing.${taskId}`]: !currentState }); } 
-    catch(err) { if (err.code === 'not-found') await setDoc(docRef, { marketing: { [taskId]: !currentState } }, { merge: true }); }
+    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } catch(err) {}
   };
 
   const handleAddTask = async (e) => {
@@ -468,8 +384,6 @@ function App() {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
-        botInstructions: firestoreData.botInstructions || '',
-        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -503,104 +417,36 @@ function App() {
           </div>
         )}
 
-        {/* MARKETING (EDITABLE) */}
-        {activeTab === 'marketing' && firestoreData.contentStrategy && (
-          <div className="space-y-6 pb-6">
-            
-            {/* Vibe Settings */}
-            <div className="bg-slate-800 text-white p-4 rounded-xl shadow-md">
-              <h2 className="font-bold flex items-center gap-2 mb-3 text-sm uppercase tracking-wider"><Smartphone className="w-4 h-4" /> Platform Vibe Shift</h2>
-              <div className="grid grid-cols-1 gap-2 text-xs opacity-90">
-                <div className="flex items-center gap-2"><span className="bg-black text-white px-1.5 rounded">TikTok</span> High Speed. Auto-Captions. Bold/Yellow.</div>
-                <div className="flex items-center gap-2"><span className="bg-pink-600 text-white px-1.5 rounded">IG</span> 30fps. Lofi Filter. "Link in Bio" sticker.</div>
-                <div className="flex items-center gap-2"><span className="bg-blue-600 text-white px-1.5 rounded">FB</span> Raw/Genuine. No filters. Tag Town/Area.</div>
-              </div>
-            </div>
+        {/* MARKETING ANALYTICS */}
+        {activeTab === 'marketing' && (
+          <div className="space-y-6">
+             <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg">
+                <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2>
+                <p className="text-xs opacity-70">Track source performance & churn</p>
+             </div>
 
-            {/* List 1: Raw Footage */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-slate-50 p-4 border-b border-slate-100 flex items-center gap-2">
-                <Camera className="w-5 h-5 text-blue-600" />
-                <h2 className="font-bold text-slate-800">1. Raw Footage List</h2>
-              </div>
-              <div className="p-2 space-y-1">
-                {firestoreData.contentStrategy.shootingList.map((task, idx) => {
-                  const isDone = firestoreData.marketing?.[task.id] || false;
-                  return (
-                    <div key={task.id} className={`p-3 rounded-lg flex items-start gap-3 transition-all ${isDone ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'}`}>
-                       <div onClick={() => handleMarketingToggle(task.id)} className="cursor-pointer pt-1">{isDone ? <CheckSquare className="w-5 h-5 text-green-500 shrink-0" /> : <div className="w-5 h-5 rounded border-2 border-slate-300 shrink-0" />}</div>
-                       <div className="flex-1 space-y-1">
-                         <div className="flex justify-between">
-                            <EditableText 
-                                value={task.title} 
-                                onChange={(e) => updateShootingList(idx, 'title', e.target.value)} 
-                                onBlur={saveContentStrategy}
-                                className={`text-sm font-semibold ${isDone ? 'line-through text-slate-400' : 'text-slate-800'}`} 
-                            />
-                            <EditableText 
-                                value={task.time} 
-                                onChange={(e) => updateShootingList(idx, 'time', e.target.value)} 
-                                onBlur={saveContentStrategy}
-                                className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium w-auto text-right"
-                            />
-                         </div>
-                         <EditableText 
-                            value={task.desc} 
-                            onChange={(e) => updateShootingList(idx, 'desc', e.target.value)} 
-                            onBlur={saveContentStrategy}
-                            className="text-xs text-slate-500" 
-                        />
-                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+             {!analytics ? (
+                <div className="text-center py-10 text-slate-400 flex flex-col items-center">
+                    <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                    <p className="text-xs">Processing data... (Ensure 'Sheet2' exists)</p>
+                </div>
+             ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                     <StatCard label="Total Active" value={analytics.reduce((a,b) => a + b.active, 0)} icon={Users} color="text-blue-600" />
+                     <StatCard label="Avg Retention" value={`${Math.round(analytics.reduce((a,b) => a + b.retentionRate, 0) / analytics.length)}%`} icon={PieChart} color="text-green-600" />
+                  </div>
 
-            {/* List 2: Edit Schedule */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-2"><Scissors className="w-5 h-5 text-purple-600" /><h2 className="font-bold text-slate-800">2. Editing Schedule</h2></div>
-              </div>
-              <div className="flex border-b border-slate-100 overflow-x-auto">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (<button key={day} onClick={() => setMarketingDay(day)} className={`flex-1 py-3 text-xs font-bold transition-colors ${marketingDay === day ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-400 hover:text-slate-600'}`}>{day}</button>))}</div>
-              
-              <div className="p-4">
-                {firestoreData.contentStrategy.editingSchedule[marketingDay] && (
-                  <>
-                    <div className="mb-4">
-                      <EditableText 
-                        value={firestoreData.contentStrategy.editingSchedule[marketingDay].title} 
-                        onChange={(e) => updateEditingSchedule(marketingDay, 'title', e.target.value)} 
-                        onBlur={saveContentStrategy}
-                        className="text-lg font-bold text-slate-800" 
-                      />
-                      <EditableText 
-                        value={firestoreData.contentStrategy.editingSchedule[marketingDay].subject} 
-                        onChange={(e) => updateEditingSchedule(marketingDay, 'subject', e.target.value)} 
-                        onBlur={saveContentStrategy}
-                        className="text-sm text-slate-500 mt-1" 
-                      />
-                    </div>
-
-                    <div className="space-y-3">
-                      {firestoreData.contentStrategy.editingSchedule[marketingDay].platforms.map((platform, idx) => (
-                        <div key={idx} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                          <div className="flex items-center gap-2 mb-2">
-                             <span className={`text-white text-[10px] font-bold px-2 py-0.5 rounded ${platform.name === 'TikTok' ? 'bg-black' : platform.name === 'Instagram' ? 'bg-pink-600' : 'bg-blue-600'}`}>{platform.name}</span>
-                          </div>
-                          <div className="grid grid-cols-1 gap-2 text-xs">
-                             <div className="flex gap-2 items-center"><span className="font-bold w-10 shrink-0 text-slate-400">Style:</span> <EditableText value={platform.style} onChange={(e) => updatePlatformDetail(marketingDay, idx, 'style', e.target.value)} onBlur={saveContentStrategy} className="text-slate-700" /></div>
-                             <div className="flex gap-2 items-center"><span className="font-bold w-10 shrink-0 text-slate-400">Audio:</span> <EditableText value={platform.audio} onChange={(e) => updatePlatformDetail(marketingDay, idx, 'audio', e.target.value)} onBlur={saveContentStrategy} className="text-slate-700" /></div>
-                             <div className="flex gap-2 items-center"><span className="font-bold w-10 shrink-0 text-slate-400">Tags:</span> <EditableText value={platform.text} onChange={(e) => updatePlatformDetail(marketingDay, idx, 'text', e.target.value)} onBlur={saveContentStrategy} className="text-blue-600 font-medium" /></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <button onClick={() => handleMarketingToggle(`edit_${marketingDay}`)} className={`mt-4 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${firestoreData.marketing?.[`edit_${marketingDay}`] ? 'bg-green-100 text-green-700' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>{firestoreData.marketing?.[`edit_${marketingDay}`] ? <> <CheckSquare className="w-5 h-5" /> Completed for {marketingDay} </> : "Mark Day Complete"}</button>
-              </div>
-            </div>
+                  <div>
+                     <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><Database className="w-4 h-4 text-blue-600" /> Source Breakdown</h3>
+                     <div className="space-y-3">
+                        {analytics.map((source) => (
+                           <SourceRow key={source.name} source={source.name} data={source} />
+                        ))}
+                     </div>
+                  </div>
+                </>
+             )}
           </div>
         )}
 
@@ -634,7 +480,7 @@ function App() {
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'marketing', icon: Video, label: 'Content' }, 
+          { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
           { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
