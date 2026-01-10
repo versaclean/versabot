@@ -74,6 +74,33 @@ const DAILY_ROUTINE = [
 
 // --- COMPONENTS ---
 
+const KPICard = ({ title, value, subtext, alert }) => (
+  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
+    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
+  </div>
+);
+
+const ProgressBar = ({ current, target, label }) => {
+  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
+      <div className="flex justify-between items-end mb-2">
+        <div className="flex justify-between w-full">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-xs text-slate-500">
+            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
+            </span>
+        </div>
+      </div>
+      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
+      </div>
+    </div>
+  );
+};
+
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
     <div>
@@ -227,9 +254,9 @@ function App() {
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
-        lastDone: headers.indexOf('last done'), // Used for lost date
+        lastDone: headers.indexOf('last done'), 
         state: headers.indexOf('state'),
-        jobState: headers.indexOf('job state'), // Needed for "Empty" check
+        jobState: headers.indexOf('job state'), 
         service: headers.indexOf('services'),
         freq: headers.indexOf('frequency')
     };
@@ -249,11 +276,10 @@ function App() {
         // --- 1. DATE FILTER (2026+) ---
         const createdDate = new Date(row[idx.created]);
         if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
-            continue; // Skip pre-2026 data
+            continue; 
         }
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
-        // Normalize source name or bucket into 'Other'
         const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
         
         const state = row[idx.state]?.toString().trim().toLowerCase() || '';
@@ -266,15 +292,14 @@ function App() {
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
-            // --- 2. ACTIVE CRITERIA: State='Active' AND JobState='Empty' ---
+            // --- 2. ACTIVE CRITERIA ---
             if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
             } 
-            // --- 3. CHURN CRITERIA: State='Inactive' ---
+            // --- 3. CHURN CRITERIA ---
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
                 
-                // Calculate Lifespan (Months)
                 const last = new Date(row[idx.lastDone]);
                 if (!isNaN(last)) {
                     const months = (last.getFullYear() - createdDate.getFullYear()) * 12 + (last.getMonth() - createdDate.getMonth());
@@ -284,7 +309,6 @@ function App() {
         }
     }
 
-    // Convert to Array for rendering
     return Object.entries(sources).map(([name, data]) => ({
         name,
         active: data.active,
@@ -292,7 +316,7 @@ function App() {
         total: data.active + data.churn,
         retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
         avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
-    })).sort((a,b) => b.active - a.active); // Sort by active count
+    })).sort((a,b) => b.active - a.active); 
   };
 
   const fetchLiveData = async () => {
@@ -438,7 +462,7 @@ function App() {
              {!analytics ? (
                 <div className="text-center py-10 text-slate-400 flex flex-col items-center">
                     <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                    <p className="text-xs">Processing data... (Ensure 'Sheet2' exists)</p>
+                    <p className="text-xs">Crunching numbers from Sheet2...</p>
                 </div>
              ) : (
                 <>
