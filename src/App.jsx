@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
-  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell
+  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
+  Plus, Trash2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -246,7 +247,7 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- DATA PROCESSING (ANALYTICS ENGINE) ---
+  // --- ANALYTICS PROCESSING ---
   const processMarketingData = (rawData) => {
     if (!rawData || rawData.length < 2) return null;
 
@@ -462,7 +463,7 @@ function App() {
              {!analytics ? (
                 <div className="text-center py-10 text-slate-400 flex flex-col items-center">
                     <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                    <p className="text-xs">Crunching numbers from Sheet2...</p>
+                    <p className="text-xs">Processing data... (Ensure 'Sheet2' exists)</p>
                 </div>
              ) : (
                 <>
