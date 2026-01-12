@@ -3,7 +3,7 @@ import {
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
   Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug
+  Bug, Plus, Trash2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -74,6 +74,38 @@ const DAILY_ROUTINE = [
 ];
 
 // --- COMPONENTS ---
+
+// 1. Progress Bar (Fixed: Restored definition)
+const ProgressBar = ({ current, target, label }) => {
+  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
+      <div className="flex justify-between items-end mb-2">
+        <div className="flex justify-between w-full">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-xs text-slate-500">
+            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
+            </span>
+        </div>
+      </div>
+      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// 2. KPI Card (Fixed: Restored definition)
+const KPICard = ({ title, value, subtext, alert }) => (
+  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
+    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
+  </div>
+);
 
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
@@ -197,6 +229,7 @@ function App() {
 
         if (!data.gasUrl) data.gasUrl = '';
         
+        // Routine Reset Check
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -205,6 +238,7 @@ function App() {
           setFirestoreData(prev => ({ ...prev, ...data })); 
         }
       } else {
+        // Init User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
@@ -225,7 +259,7 @@ function App() {
 
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
     
-    // Fuzzy match for "Job State"
+    // Fuzzy match for headers
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
@@ -249,6 +283,7 @@ function App() {
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         
+        // --- 1. DATE FILTER (2026+) ---
         const createdDate = new Date(row[idx.created]);
         if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
             continue; 
@@ -266,9 +301,11 @@ function App() {
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
+            // --- 2. ACTIVE CRITERIA: State='Active' AND JobState='Empty' ---
             if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
             } 
+            // --- 3. CHURN CRITERIA: State='Inactive' ---
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
                 const last = new Date(row[idx.lastDone]);
@@ -356,6 +393,7 @@ function App() {
     const permission = await Notification.requestPermission();
   };
 
+  // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   
   const handleRoutineToggle = async (taskId) => {
