@@ -3,7 +3,7 @@ import {
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
   Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Plus, Trash2
+  Bug
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -74,33 +74,6 @@ const DAILY_ROUTINE = [
 ];
 
 // --- COMPONENTS ---
-
-const KPICard = ({ title, value, subtext, alert }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
-    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
-    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
-  </div>
-);
-
-const ProgressBar = ({ current, target, label }) => {
-  const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
-  return (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4">
-      <div className="flex justify-between items-end mb-2">
-        <div className="flex justify-between w-full">
-            <span className="text-sm font-medium text-slate-700">{label}</span>
-            <span className="text-xs text-slate-500">
-            {percentage.toFixed(1)}% of {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(target)}
-            </span>
-        </div>
-      </div>
-      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
-      </div>
-    </div>
-  );
-};
 
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
@@ -191,6 +164,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
   const [analytics, setAnalytics] = useState(null);
+  const [analyticsError, setAnalyticsError] = useState(null);
   const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const [currentNotification, setCurrentNotification] = useState(null);
 
@@ -223,7 +197,6 @@ function App() {
 
         if (!data.gasUrl) data.gasUrl = '';
         
-        // Routine Reset Check
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -232,7 +205,6 @@ function App() {
           setFirestoreData(prev => ({ ...prev, ...data })); 
         }
       } else {
-        // Init User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
@@ -252,29 +224,31 @@ function App() {
     if (!rawData || rawData.length < 2) return null;
 
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
+    
+    // Fuzzy match for "Job State"
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
         lastDone: headers.indexOf('last done'), 
         state: headers.indexOf('state'),
-        jobState: headers.indexOf('job state'), 
+        jobState: headers.findIndex(h => h.includes('job') && h.includes('state')), // Flexible match
         service: headers.indexOf('services'),
         freq: headers.indexOf('frequency')
     };
 
-    if (idx.source === -1 || idx.state === -1) return null;
+    if (idx.source === -1 || idx.state === -1 || idx.jobState === -1) {
+        setAnalyticsError(`Missing Columns. Found: ${headers.join(', ')}`);
+        return null;
+    }
 
     const sources = {};
     const validSources = ['LSA', 'Facebook Ads', 'Website', 'Leaflet', 'Canvassed', 'Social Media', 'Google'];
-
-    // Initialize map
     validSources.forEach(s => sources[s] = { active: 0, churn: 0, lifespans: [] });
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         
-        // --- 1. DATE FILTER (2026+) ---
         const createdDate = new Date(row[idx.created]);
         if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
             continue; 
@@ -288,19 +262,15 @@ function App() {
         const service = row[idx.service]?.toString().toLowerCase() || '';
         const freq = row[idx.freq]?.toString().toLowerCase() || '';
 
-        // Criteria: Window Cleaning + 4/8 weeks
         const isWindowCleaning = service.includes('window cleaning'); 
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
-            // --- 2. ACTIVE CRITERIA ---
             if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
             } 
-            // --- 3. CHURN CRITERIA ---
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
-                
                 const last = new Date(row[idx.lastDone]);
                 if (!isNaN(last)) {
                     const months = (last.getFullYear() - createdDate.getFullYear()) * 12 + (last.getMonth() - createdDate.getMonth());
@@ -326,7 +296,9 @@ function App() {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
-      if (!data.error) {
+      if (data.error) {
+        setAnalyticsError(data.error);
+      } else {
         setLiveData(data);
         if (data.marketing_raw) {
             const processed = processMarketingData(data.marketing_raw);
@@ -334,7 +306,10 @@ function App() {
         }
       }
       return data;
-    } catch (error) { return null; }
+    } catch (error) { 
+        setAnalyticsError(error.message);
+        return null; 
+    }
   };
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
@@ -381,7 +356,6 @@ function App() {
     const permission = await Notification.requestPermission();
   };
 
-  // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   
   const handleRoutineToggle = async (taskId) => {
@@ -460,10 +434,16 @@ function App() {
                 <p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p>
              </div>
 
-             {!analytics ? (
+             {analyticsError ? (
+                 <div className="bg-red-50 p-4 rounded-xl text-red-600 text-sm">
+                     <p className="font-bold flex items-center gap-2"><Bug className="w-4 h-4"/> Data Error</p>
+                     <p className="mt-1">{analyticsError}</p>
+                     <p className="text-xs mt-2 text-red-500">Check 'Settings' > 'Debug' for loaded headers.</p>
+                 </div>
+             ) : !analytics ? (
                 <div className="text-center py-10 text-slate-400 flex flex-col items-center">
                     <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                    <p className="text-xs">Processing data... (Ensure 'Sheet2' exists)</p>
+                    <p className="text-xs">Processing data...</p>
                 </div>
              ) : (
                 <>
@@ -505,6 +485,12 @@ function App() {
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bell className="w-4 h-4" /> Notifications</label>
                 <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-blue-600 text-white">Request Permission</button></div>
               </div>
+              
+              <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
+                <p className="text-[10px] text-slate-500 font-mono break-all">{liveData?.marketing_raw ? `Connected. Columns: ${JSON.stringify(liveData.marketing_raw[0])}` : "No Data Connected"}</p>
+              </div>
+
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
           </div>
