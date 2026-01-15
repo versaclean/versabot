@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
+  LayoutDashboard, MessageSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
-  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug, Plus, Trash2
+  Database, BarChart3, PieChart, Users, Bell, Bug
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -11,7 +10,7 @@ import {
   onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
-  getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove 
+  getFirestore, doc, onSnapshot, setDoc, updateDoc
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
@@ -41,41 +40,16 @@ if (firebaseConfig.apiKey) {
   }
 }
 
-// --- CONSTANTS ---
-const DAILY_ROUTINE = [
-  {
-    title: '☀️ Morning Kickoff',
-    timeBlock: 'morning',
-    notifyAt: '09:30',
-    items: [
-      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
-      { id: 'm_team', label: 'Go see team (get photo/video)' }
-    ]
-  },
-  {
-    title: '☕ Midday Check-in',
-    timeBlock: 'midday',
-    notifyAt: '12:30',
-    items: [
-      { id: 'mid_texts', label: 'Check texts for updates' },
-      { id: 'mid_va', label: 'Check items from VA' }
-    ]
-  },
-  {
-    title: '🌙 Close Down',
-    timeBlock: 'evening',
-    notifyAt: '16:00',
-    items: [
-      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
-      { id: 'close_texts', label: 'Check text messages' },
-      { id: 'close_va', label: 'Check VA messages' }
-    ]
-  }
-];
-
 // --- COMPONENTS ---
 
-// 1. Progress Bar (Fixed: Restored definition)
+const KPICard = ({ title, value, subtext, alert }) => (
+  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
+    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
+  </div>
+);
+
 const ProgressBar = ({ current, target, label }) => {
   const percentage = target > 0 ? Math.min(100, Math.max(0, (current / target) * 100)) : 0;
   return (
@@ -89,23 +63,11 @@ const ProgressBar = ({ current, target, label }) => {
         </div>
       </div>
       <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${percentage}%` }}
-        />
+        <div className="h-full bg-blue-600 rounded-full transition-all duration-500 ease-out" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   );
 };
-
-// 2. KPI Card (Fixed: Restored definition)
-const KPICard = ({ title, value, subtext, alert }) => (
-  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
-    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
-    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
-    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
-  </div>
-);
 
 const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
   <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
@@ -197,14 +159,11 @@ function App() {
   const [liveData, setLiveData] = useState(null); 
   const [analytics, setAnalytics] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
-  const [pendingTasksCount, setPendingTasksCount] = useState(0);
-  const [currentNotification, setCurrentNotification] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null); 
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
-    targets: { monthly: 20000, weekly: 5000 },
-    routine: { lastReset: '' }, 
-    adhocTasks: [],
+    targets: { monthly: 20000, weekly: 5000 }
   });
 
   useEffect(() => {
@@ -225,29 +184,15 @@ function App() {
     const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const today = new Date().toISOString().split('T')[0];
-
         if (!data.gasUrl) data.gasUrl = '';
-        
-        // Routine Reset Check
-        if (data.routine?.lastReset !== today) {
-          const resetRoutine = { lastReset: today };
-          DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
-          updateDoc(docRef, { routine: resetRoutine });
-        } else {
-          setFirestoreData(prev => ({ ...prev, ...data })); 
-        }
+        setFirestoreData(prev => ({ ...prev, ...data })); 
       } else {
         // Init User
-        const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
-        DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
-          routine: initialRoutine,
-          adhocTasks: [],
         });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, routine: initialRoutine, adhocTasks: [] });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 } });
       }
     });
     return () => unsubscribeSnapshot();
@@ -265,7 +210,7 @@ function App() {
         created: headers.indexOf('created'),
         lastDone: headers.indexOf('last done'), 
         state: headers.indexOf('state'),
-        jobState: headers.findIndex(h => h.includes('job') && h.includes('state')), // Flexible match
+        jobState: headers.findIndex(h => h.includes('job') && h.includes('state')), 
         service: headers.indexOf('services'),
         freq: headers.indexOf('frequency')
     };
@@ -301,11 +246,11 @@ function App() {
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
-            // --- 2. ACTIVE CRITERIA: State='Active' AND JobState='Empty' ---
+            // --- 2. ACTIVE CRITERIA ---
             if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
             } 
-            // --- 3. CHURN CRITERIA: State='Inactive' ---
+            // --- 3. CHURN CRITERIA ---
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
                 const last = new Date(row[idx.lastDone]);
@@ -333,6 +278,9 @@ function App() {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
+      
+      setDebugInfo(data);
+
       if (data.error) {
         setAnalyticsError(data.error);
       } else {
@@ -351,78 +299,9 @@ function App() {
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
 
-  // --- NOTIFICATIONS ---
-  useEffect(() => {
-    if (!firestoreData.routine) return;
-    const checkNotifications = () => {
-      const now = new Date();
-      const hour = now.getHours();
-      const minute = now.getMinutes();
-      const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      let currentBlock = '';
-      if (hour >= 6 && hour < 12) currentBlock = 'morning';
-      else if (hour >= 12 && hour < 17) currentBlock = 'midday';
-      else if (hour >= 17 && hour < 22) currentBlock = 'evening';
-
-      let pending = 0;
-      let urgentPending = 0;
-      DAILY_ROUTINE.forEach(section => {
-        section.items.forEach(item => {
-          if (!firestoreData.routine[item.id]) {
-            pending++;
-            if (section.timeBlock === currentBlock) urgentPending++;
-            if (section.notifyAt === timeStr && 'Notification' in window && Notification.permission === 'granted') {
-               new Notification(section.title, { body: `You have outstanding tasks for ${section.title}!` });
-            }
-          }
-        });
-      });
-      setPendingTasksCount(pending);
-      if (urgentPending > 0) {
-        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
-        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
-      } else setCurrentNotification(null);
-    };
-    checkNotifications();
-    const interval = setInterval(checkNotifications, 60000);
-    return () => clearInterval(interval);
-  }, [firestoreData.routine]);
-
-  const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) return;
-    const permission = await Notification.requestPermission();
-  };
-
   // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   
-  const handleRoutineToggle = async (taskId) => {
-    if (!user) return;
-    const currentState = firestoreData.routine?.[taskId] || false;
-    setFirestoreData(prev => ({ ...prev, routine: { ...prev.routine, [taskId]: !currentState } }));
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } catch(err) {}
-  };
-
-  const handleAddTask = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const text = formData.get('taskText');
-    if (!text || !user) return;
-    const newTask = { id: Date.now(), text: text, created: new Date().toISOString() };
-    setFirestoreData(prev => ({ ...prev, adhocTasks: [...prev.adhocTasks, newTask] }));
-    e.target.reset();
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
-  };
-
-  const handleDeleteTask = async (task) => {
-    if (!user) return;
-    setFirestoreData(prev => ({ ...prev, adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id) }));
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
-  };
-
   const handleSettingsSave = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -457,7 +336,6 @@ function App() {
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {currentNotification && <div onClick={() => setActiveTab('tasks')} className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100"><div className="p-2 bg-orange-100 rounded-full"><Bell className="w-5 h-5 text-orange-600 animate-bounce" /></div><div className="flex-1"><h3 className="font-bold text-orange-800 text-sm">Action Required</h3><p className="text-xs text-orange-700">{currentNotification}</p></div><div className="text-orange-400">→</div></div>}
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div><h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2><ProgressBar label="Monthly Turnover" current={liveData?.financials?.turnover_mtd || 0} target={firestoreData.targets.monthly} /><ProgressBar label="Weekly Turnover" current={liveData?.financials?.turnover_wtd || 0} target={firestoreData.targets.weekly} /></div>
             <div className="grid grid-cols-2 gap-3"><KPICard title="Turnover MTD" value={fmt(liveData?.financials?.turnover_mtd)} /><KPICard title="Debtors Total" value={fmt(liveData?.financials?.debtors_total)} alert={(liveData?.financials?.debtors_total || 0) > 5000} /><KPICard title="New Cust Value" value={fmt(liveData?.customers?.new_value_4w)} subtext="This Month" /><KPICard title="Churn" value={liveData?.customers?.churn_count || 0} alert={(liveData?.customers?.churn_count || 0) > 0} subtext="Clients Lost" /></div>
@@ -503,14 +381,6 @@ function App() {
           </div>
         )}
 
-        {/* TASKS */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-6">
-            {DAILY_ROUTINE.map((section, idx) => (<div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">{section.title}</h3><div className="space-y-3">{section.items.map((item) => { const isDone = firestoreData.routine?.[item.id] || false; return (<button key={item.id} onClick={() => handleRoutineToggle(item.id)} className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${isDone ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}><span className="font-medium text-sm">{item.label}</span>{isDone ? <CheckSquare className="w-5 h-5 opacity-50" /> : <div className="w-5 h-5 rounded border border-slate-300" />} </button>); })}</div></div>))}
-            <div><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Ad-hoc Tasks</h3><form onSubmit={handleAddTask} className="flex gap-2 mb-4"><input name="taskText" placeholder="Add new task..." className="flex-1 p-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /><button type="submit" className="bg-blue-600 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button></form><div className="space-y-2">{firestoreData.adhocTasks.map((task) => (<div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm group"><span className="text-sm text-slate-700">{task.text}</span><button onClick={() => handleDeleteTask(task)} className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button></div>))}{firestoreData.adhocTasks.length === 0 && <p className="text-center text-slate-400 text-xs py-4">No pending tasks</p>}</div></div>
-          </div>
-        )}
-
         {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
@@ -519,14 +389,16 @@ function App() {
               <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label><input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div></div>
               
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bell className="w-4 h-4" /> Notifications</label>
-                <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-blue-600 text-white">Request Permission</button></div>
-              </div>
-              
               <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
-                <p className="text-[10px] text-slate-500 font-mono break-all">{liveData?.marketing_raw ? `Connected. Columns: ${JSON.stringify(liveData.marketing_raw[0])}` : "No Data Connected"}</p>
+                <p className="text-[10px] text-slate-500 font-mono break-all">
+                  {debugInfo?.error ? `Script Error: ${debugInfo.error}` : 
+                   debugInfo?.marketing_raw ? `Connected. Columns: ${JSON.stringify(debugInfo.marketing_raw[0])}` : 
+                   "No Data. Check URL."}
+                </p>
+                {debugInfo?.available_tabs && (
+                   <p className="text-[10px] text-red-500 font-mono mt-1">Available Tabs: {JSON.stringify(debugInfo.available_tabs)}</p>
+                )}
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
@@ -539,11 +411,9 @@ function App() {
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
           { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
-          { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
-            {item.badge && <span className="absolute top-2 right-4 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
