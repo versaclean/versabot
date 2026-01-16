@@ -194,10 +194,6 @@ function App() {
   const [growthData, setGrowthData] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null); 
-  
-  // Defined here to prevent crashes in Nav
-  const [pendingTasksCount, setPendingTasksCount] = useState(0);
-  const [currentNotification, setCurrentNotification] = useState(null);
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -224,27 +220,15 @@ function App() {
     const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const today = new Date().toISOString().split('T')[0];
-
         if (!data.gasUrl) data.gasUrl = '';
-        
-        if (data.routine?.lastReset !== today) {
-          const resetRoutine = { lastReset: today };
-          DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
-          updateDoc(docRef, { routine: resetRoutine });
-        } else {
-          setFirestoreData(prev => ({ ...prev, ...data })); 
-        }
+        setFirestoreData(prev => ({ ...prev, ...data })); 
       } else {
-        const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
-        DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
+        // Init User
         setDoc(docRef, {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
-          routine: initialRoutine,
-          adhocTasks: [],
         });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, routine: initialRoutine, adhocTasks: [] });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 } });
       }
     });
     return () => unsubscribeSnapshot();
@@ -256,6 +240,7 @@ function App() {
 
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
     
+    // Fuzzy match for headers
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
@@ -277,12 +262,16 @@ function App() {
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
     let totalActiveCount = 0; 
+    
+    // Growth Parameters
+    const TRACK_START_DATE = new Date('2026-01-12');
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         
+        // DATE FILTER: Created >= Jan 12, 2026
         const createdDate = new Date(row[idx.created]);
-        if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
+        if (isNaN(createdDate) || createdDate < TRACK_START_DATE) {
             continue; 
         }
 
@@ -313,18 +302,25 @@ function App() {
         }
     }
 
-    // Growth Tracker Logic
+    // --- GROWTH TRACKER LOGIC ---
     const START_COUNT = 814;
     const END_COUNT = 1600;
-    const startDate = new Date('2026-01-01');
+    const TRACK_END_DATE = new Date('2026-12-31');
     const today = new Date();
     
-    const diffTime = Math.abs(today - startDate);
-    const daysPassed = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    const totalDays = 365;
+    // Calculate total days for the goal (Jan 12 - Dec 31)
+    const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
+    const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
+
+    // Calculate days passed since start
+    const timeElapsed = today - TRACK_START_DATE;
+    const daysPassed = timeElapsed > 0 ? Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)) : 0;
     
+    // Linear Growth Calculation
     const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
+    
+    // Actual = Baseline + New Actives (Created >= Jan 12)
     const actualToday = START_COUNT + totalActiveCount;
     
     setGrowthData({
@@ -371,77 +367,8 @@ function App() {
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
 
-  // --- NOTIFICATIONS ---
-  useEffect(() => {
-    if (!firestoreData.routine) return;
-    const checkNotifications = () => {
-      const now = new Date();
-      const hour = now.getHours();
-      const minute = now.getMinutes();
-      const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-      let currentBlock = '';
-      if (hour >= 6 && hour < 12) currentBlock = 'morning';
-      else if (hour >= 12 && hour < 17) currentBlock = 'midday';
-      else if (hour >= 17 && hour < 22) currentBlock = 'evening';
-
-      let pending = 0;
-      let urgentPending = 0;
-      DAILY_ROUTINE.forEach(section => {
-        section.items.forEach(item => {
-          if (!firestoreData.routine[item.id]) {
-            pending++;
-            if (section.timeBlock === currentBlock) urgentPending++;
-            if (section.notifyAt === timeStr && 'Notification' in window && Notification.permission === 'granted') {
-               new Notification(section.title, { body: `You have outstanding tasks for ${section.title}!` });
-            }
-          }
-        });
-      });
-      setPendingTasksCount(pending);
-      if (urgentPending > 0) {
-        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
-        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
-      } else setCurrentNotification(null);
-    };
-    checkNotifications();
-    const interval = setInterval(checkNotifications, 60000);
-    return () => clearInterval(interval);
-  }, [firestoreData.routine]);
-
-  const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) return;
-    const permission = await Notification.requestPermission();
-  };
-
   // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
-  
-  const handleRoutineToggle = async (taskId) => {
-    if (!user) return;
-    const currentState = firestoreData.routine?.[taskId] || false;
-    setFirestoreData(prev => ({ ...prev, routine: { ...prev.routine, [taskId]: !currentState } }));
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } catch(err) {}
-  };
-
-  const handleAddTask = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const text = formData.get('taskText');
-    if (!text || !user) return;
-    const newTask = { id: Date.now(), text: text, created: new Date().toISOString() };
-    setFirestoreData(prev => ({ ...prev, adhocTasks: [...prev.adhocTasks, newTask] }));
-    e.target.reset();
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
-  };
-
-  const handleDeleteTask = async (task) => {
-    if (!user) return;
-    setFirestoreData(prev => ({ ...prev, adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id) }));
-    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
-    await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
-  };
 
   const handleSettingsSave = async (e) => {
     e.preventDefault();
@@ -477,7 +404,6 @@ function App() {
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {currentNotification && <div onClick={() => setActiveTab('tasks')} className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100"><div className="p-2 bg-orange-100 rounded-full"><Bell className="w-5 h-5 text-orange-600 animate-bounce" /></div><div className="flex-1"><h3 className="font-bold text-orange-800 text-sm">Action Required</h3><p className="text-xs text-orange-700">{currentNotification}</p></div><div className="text-orange-400">→</div></div>}
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div><h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2><ProgressBar label="Monthly Turnover" current={liveData?.financials?.turnover_mtd || 0} target={firestoreData.targets.monthly} /><ProgressBar label="Weekly Turnover" current={liveData?.financials?.turnover_wtd || 0} target={firestoreData.targets.weekly} /></div>
             <div className="grid grid-cols-2 gap-3"><KPICard title="Turnover MTD" value={fmt(liveData?.financials?.turnover_mtd)} /><KPICard title="Debtors Total" value={fmt(liveData?.financials?.debtors_total)} alert={(liveData?.financials?.debtors_total || 0) > 5000} /><KPICard title="New Cust Value" value={fmt(liveData?.customers?.new_value_4w)} subtext="This Month" /><KPICard title="Churn" value={liveData?.customers?.churn_count || 0} alert={(liveData?.customers?.churn_count || 0) > 0} subtext="Clients Lost" /></div>
@@ -489,7 +415,7 @@ function App() {
           <div className="space-y-6">
              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg">
                 <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2>
-                <p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p>
+                <p className="text-xs opacity-70">2026 Onwards (Since Jan 12). Active = Empty Job State.</p>
              </div>
 
              {analyticsError ? (
@@ -540,14 +466,6 @@ function App() {
           </div>
         )}
 
-        {/* TASKS */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-6">
-            {DAILY_ROUTINE.map((section, idx) => (<div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">{section.title}</h3><div className="space-y-3">{section.items.map((item) => { const isDone = firestoreData.routine?.[item.id] || false; return (<button key={item.id} onClick={() => handleRoutineToggle(item.id)} className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${isDone ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}><span className="font-medium text-sm">{item.label}</span>{isDone ? <CheckSquare className="w-5 h-5 opacity-50" /> : <div className="w-5 h-5 rounded border border-slate-300" />} </button>); })}</div></div>))}
-            <div><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Ad-hoc Tasks</h3><form onSubmit={handleAddTask} className="flex gap-2 mb-4"><input name="taskText" placeholder="Add new task..." className="flex-1 p-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /><button type="submit" className="bg-blue-600 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button></form><div className="space-y-2">{firestoreData.adhocTasks.map((task) => (<div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm group"><span className="text-sm text-slate-700">{task.text}</span><button onClick={() => handleDeleteTask(task)} className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button></div>))}{firestoreData.adhocTasks.length === 0 && <p className="text-center text-slate-400 text-xs py-4">No pending tasks</p>}</div></div>
-          </div>
-        )}
-
         {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
@@ -555,11 +473,6 @@ function App() {
             <form onSubmit={handleSettingsSave} className="space-y-4">
               <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label><input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div></div>
-              
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bell className="w-4 h-4" /> Notifications</label>
-                <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-blue-600 text-white">Request Permission</button></div>
-              </div>
               
               <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
@@ -583,7 +496,6 @@ function App() {
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
           { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
-          { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
