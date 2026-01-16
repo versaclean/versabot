@@ -3,7 +3,7 @@ import {
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
   Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug, Plus, Trash2, Target
+  Bug, Plus, Trash2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -191,9 +191,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
   const [analytics, setAnalytics] = useState(null);
-  const [growthData, setGrowthData] = useState(null); // New State for Growth
+  const [growthData, setGrowthData] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null); 
+  
+  // Defined here to prevent crashes in Nav
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+  const [currentNotification, setCurrentNotification] = useState(null);
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -224,7 +228,6 @@ function App() {
 
         if (!data.gasUrl) data.gasUrl = '';
         
-        // Routine Reset Check
         if (data.routine?.lastReset !== today) {
           const resetRoutine = { lastReset: today };
           DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
@@ -233,7 +236,6 @@ function App() {
           setFirestoreData(prev => ({ ...prev, ...data })); 
         }
       } else {
-        // Init User
         const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
         DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
@@ -254,7 +256,6 @@ function App() {
 
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
     
-    // Fuzzy match for headers
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
@@ -275,15 +276,12 @@ function App() {
     validSources.forEach(s => sources[s] = { active: 0, churn: 0, lifespans: [] });
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
-    let totalActiveCount = 0; // Total count for Growth Tracker
+    let totalActiveCount = 0; 
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         
-        // --- 1. DATE FILTER (2026+) ---
         const createdDate = new Date(row[idx.created]);
-        // Note: For growth tracking, we count ALL actives, but source tracking might filter by year.
-        // The user asked "ignore pre 2026" for the numbers, so we keep this filter.
         if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
             continue; 
         }
@@ -315,39 +313,26 @@ function App() {
         }
     }
 
-    // --- GROWTH TRACKER LOGIC ---
+    // Growth Tracker Logic
     const START_COUNT = 814;
     const END_COUNT = 1600;
     const startDate = new Date('2026-01-01');
     const today = new Date();
     
-    // Calculate days passed in 2026 (cap at 365)
     const diffTime = Math.abs(today - startDate);
     const daysPassed = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     const totalDays = 365;
     
-    // Linear Growth Calculation
     const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
-    
-    // IMPORTANT: The 'totalActiveCount' here only includes 2026+ active jobs.
-    // If the 814 base is pre-existing, we need to add the NEW actives to the BASE.
-    // Assuming 'totalActiveCount' from the loop refers to *growth* (since we filter <2026),
-    // then Actual = 814 + totalActiveCount.
-    // However, usually, a spreadsheet export has ALL jobs. 
-    // If the Sheet filters out pre-2026, then 'totalActiveCount' is just the NEW gain.
-    // Let's assume the Sheet contains EVERYTHING, but the loop filtered pre-2026.
-    // To get "Total Active Portfolio", we should take the BASE (814) + NEW 2026 ACTIVES.
     const actualToday = START_COUNT + totalActiveCount;
     
-    const growthStats = {
+    setGrowthData({
         actual: actualToday,
         target: targetToday,
         diff: actualToday - targetToday,
         status: (actualToday - targetToday) >= 0 ? 'Ahead' : 'Behind'
-    };
-
-    setGrowthData(growthStats);
+    });
 
     return Object.entries(sources).map(([name, data]) => ({
         name,
@@ -385,6 +370,48 @@ function App() {
   };
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
+
+  // --- NOTIFICATIONS ---
+  useEffect(() => {
+    if (!firestoreData.routine) return;
+    const checkNotifications = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+      let currentBlock = '';
+      if (hour >= 6 && hour < 12) currentBlock = 'morning';
+      else if (hour >= 12 && hour < 17) currentBlock = 'midday';
+      else if (hour >= 17 && hour < 22) currentBlock = 'evening';
+
+      let pending = 0;
+      let urgentPending = 0;
+      DAILY_ROUTINE.forEach(section => {
+        section.items.forEach(item => {
+          if (!firestoreData.routine[item.id]) {
+            pending++;
+            if (section.timeBlock === currentBlock) urgentPending++;
+            if (section.notifyAt === timeStr && 'Notification' in window && Notification.permission === 'granted') {
+               new Notification(section.title, { body: `You have outstanding tasks for ${section.title}!` });
+            }
+          }
+        });
+      });
+      setPendingTasksCount(pending);
+      if (urgentPending > 0) {
+        const titles = { morning: 'Morning Kickoff', midday: 'Midday Check-in', evening: 'Close Down' };
+        setCurrentNotification(`${urgentPending} ${titles[currentBlock]} tasks pending!`);
+      } else setCurrentNotification(null);
+    };
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [firestoreData.routine]);
+
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) return;
+    const permission = await Notification.requestPermission();
+  };
 
   // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
@@ -450,6 +477,7 @@ function App() {
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {currentNotification && <div onClick={() => setActiveTab('tasks')} className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center gap-3 cursor-pointer hover:bg-orange-100"><div className="p-2 bg-orange-100 rounded-full"><Bell className="w-5 h-5 text-orange-600 animate-bounce" /></div><div className="flex-1"><h3 className="font-bold text-orange-800 text-sm">Action Required</h3><p className="text-xs text-orange-700">{currentNotification}</p></div><div className="text-orange-400">→</div></div>}
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
             <div><h2 className="text-lg font-bold mb-3 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" /> Performance</h2><ProgressBar label="Monthly Turnover" current={liveData?.financials?.turnover_mtd || 0} target={firestoreData.targets.monthly} /><ProgressBar label="Weekly Turnover" current={liveData?.financials?.turnover_wtd || 0} target={firestoreData.targets.weekly} /></div>
             <div className="grid grid-cols-2 gap-3"><KPICard title="Turnover MTD" value={fmt(liveData?.financials?.turnover_mtd)} /><KPICard title="Debtors Total" value={fmt(liveData?.financials?.debtors_total)} alert={(liveData?.financials?.debtors_total || 0) > 5000} /><KPICard title="New Cust Value" value={fmt(liveData?.customers?.new_value_4w)} subtext="This Month" /><KPICard title="Churn" value={liveData?.customers?.churn_count || 0} alert={(liveData?.customers?.churn_count || 0) > 0} subtext="Clients Lost" /></div>
@@ -527,6 +555,11 @@ function App() {
             <form onSubmit={handleSettingsSave} className="space-y-4">
               <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label><input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div></div>
+              
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bell className="w-4 h-4" /> Notifications</label>
+                <div className="flex items-center justify-between"><span className="text-xs text-slate-600">Get alerts for pending tasks?</span><button type="button" onClick={requestNotificationPermission} className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-blue-600 text-white">Request Permission</button></div>
+              </div>
               
               <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
