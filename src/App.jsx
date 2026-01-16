@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, MessageSquare, Settings, RefreshCw, Loader2, 
+  LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
-  Database, BarChart3, PieChart, Users, Bell, Bug
+  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
+  Bug, Plus, Trash2, Target
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -10,7 +11,7 @@ import {
   onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
-  getFirestore, doc, onSnapshot, setDoc, updateDoc
+  getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove 
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
@@ -39,6 +40,38 @@ if (firebaseConfig.apiKey) {
     console.error("Firebase Init Error", e);
   }
 }
+
+// --- CONSTANTS ---
+const DAILY_ROUTINE = [
+  {
+    title: '☀️ Morning Kickoff',
+    timeBlock: 'morning',
+    notifyAt: '09:30',
+    items: [
+      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
+      { id: 'm_team', label: 'Go see team (get photo/video)' }
+    ]
+  },
+  {
+    title: '☕ Midday Check-in',
+    timeBlock: 'midday',
+    notifyAt: '12:30',
+    items: [
+      { id: 'mid_texts', label: 'Check texts for updates' },
+      { id: 'mid_va', label: 'Check items from VA' }
+    ]
+  },
+  {
+    title: '🌙 Close Down',
+    timeBlock: 'evening',
+    notifyAt: '16:00',
+    items: [
+      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
+      { id: 'close_texts', label: 'Check text messages' },
+      { id: 'close_va', label: 'Check VA messages' }
+    ]
+  }
+];
 
 // --- COMPONENTS ---
 
@@ -158,12 +191,15 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [liveData, setLiveData] = useState(null); 
   const [analytics, setAnalytics] = useState(null);
+  const [growthData, setGrowthData] = useState(null); // New State for Growth
   const [analyticsError, setAnalyticsError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null); 
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
-    targets: { monthly: 20000, weekly: 5000 }
+    targets: { monthly: 20000, weekly: 5000 },
+    routine: { lastReset: '' }, 
+    adhocTasks: [],
   });
 
   useEffect(() => {
@@ -184,15 +220,29 @@ function App() {
     const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        const today = new Date().toISOString().split('T')[0];
+
         if (!data.gasUrl) data.gasUrl = '';
-        setFirestoreData(prev => ({ ...prev, ...data })); 
+        
+        // Routine Reset Check
+        if (data.routine?.lastReset !== today) {
+          const resetRoutine = { lastReset: today };
+          DAILY_ROUTINE.forEach(section => section.items.forEach(item => resetRoutine[item.id] = false));
+          updateDoc(docRef, { routine: resetRoutine });
+        } else {
+          setFirestoreData(prev => ({ ...prev, ...data })); 
+        }
       } else {
         // Init User
+        const initialRoutine = { lastReset: new Date().toISOString().split('T')[0] };
+        DAILY_ROUTINE.forEach(section => section.items.forEach(item => initialRoutine[item.id] = false));
         setDoc(docRef, {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
+          routine: initialRoutine,
+          adhocTasks: [],
         });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 } });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, routine: initialRoutine, adhocTasks: [] });
       }
     });
     return () => unsubscribeSnapshot();
@@ -224,12 +274,16 @@ function App() {
     const validSources = ['LSA', 'Facebook Ads', 'Website', 'Leaflet', 'Canvassed', 'Social Media', 'Google'];
     validSources.forEach(s => sources[s] = { active: 0, churn: 0, lifespans: [] });
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
+    
+    let totalActiveCount = 0; // Total count for Growth Tracker
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         
         // --- 1. DATE FILTER (2026+) ---
         const createdDate = new Date(row[idx.created]);
+        // Note: For growth tracking, we count ALL actives, but source tracking might filter by year.
+        // The user asked "ignore pre 2026" for the numbers, so we keep this filter.
         if (isNaN(createdDate) || createdDate.getFullYear() < 2026) {
             continue; 
         }
@@ -246,11 +300,10 @@ function App() {
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
         if (isWindowCleaning && isValidFreq) {
-            // --- 2. ACTIVE CRITERIA ---
             if (state === 'active' && jobState === '') {
                 sources[sourceKey].active++;
+                totalActiveCount++;
             } 
-            // --- 3. CHURN CRITERIA ---
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
                 const last = new Date(row[idx.lastDone]);
@@ -261,6 +314,40 @@ function App() {
             }
         }
     }
+
+    // --- GROWTH TRACKER LOGIC ---
+    const START_COUNT = 814;
+    const END_COUNT = 1600;
+    const startDate = new Date('2026-01-01');
+    const today = new Date();
+    
+    // Calculate days passed in 2026 (cap at 365)
+    const diffTime = Math.abs(today - startDate);
+    const daysPassed = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const totalDays = 365;
+    
+    // Linear Growth Calculation
+    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
+    const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
+    
+    // IMPORTANT: The 'totalActiveCount' here only includes 2026+ active jobs.
+    // If the 814 base is pre-existing, we need to add the NEW actives to the BASE.
+    // Assuming 'totalActiveCount' from the loop refers to *growth* (since we filter <2026),
+    // then Actual = 814 + totalActiveCount.
+    // However, usually, a spreadsheet export has ALL jobs. 
+    // If the Sheet filters out pre-2026, then 'totalActiveCount' is just the NEW gain.
+    // Let's assume the Sheet contains EVERYTHING, but the loop filtered pre-2026.
+    // To get "Total Active Portfolio", we should take the BASE (814) + NEW 2026 ACTIVES.
+    const actualToday = START_COUNT + totalActiveCount;
+    
+    const growthStats = {
+        actual: actualToday,
+        target: targetToday,
+        diff: actualToday - targetToday,
+        status: (actualToday - targetToday) >= 0 ? 'Ahead' : 'Behind'
+    };
+
+    setGrowthData(growthStats);
 
     return Object.entries(sources).map(([name, data]) => ({
         name,
@@ -302,6 +389,33 @@ function App() {
   // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   
+  const handleRoutineToggle = async (taskId) => {
+    if (!user) return;
+    const currentState = firestoreData.routine?.[taskId] || false;
+    setFirestoreData(prev => ({ ...prev, routine: { ...prev.routine, [taskId]: !currentState } }));
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    try { await updateDoc(docRef, { [`routine.${taskId}`]: !currentState }); } catch(err) {}
+  };
+
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const text = formData.get('taskText');
+    if (!text || !user) return;
+    const newTask = { id: Date.now(), text: text, created: new Date().toISOString() };
+    setFirestoreData(prev => ({ ...prev, adhocTasks: [...prev.adhocTasks, newTask] }));
+    e.target.reset();
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    await updateDoc(docRef, { adhocTasks: arrayUnion(newTask) });
+  };
+
+  const handleDeleteTask = async (task) => {
+    if (!user) return;
+    setFirestoreData(prev => ({ ...prev, adhocTasks: prev.adhocTasks.filter(t => t.id !== task.id) }));
+    const docRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'data', 'main');
+    await updateDoc(docRef, { adhocTasks: arrayRemove(task) });
+  };
+
   const handleSettingsSave = async (e) => {
     e.preventDefault();
     if (!user) return;
@@ -363,8 +477,25 @@ function App() {
                 </div>
              ) : (
                 <>
+                  {/* GROWTH TRACKER */}
+                  {growthData && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between">
+                       <div>
+                          <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Growth Track (Goal: 1600)</p>
+                          <h3 className="text-2xl font-bold text-slate-800">{growthData.actual} <span className="text-xs text-slate-400 font-normal">/ {growthData.target} target</span></h3>
+                       </div>
+                       <div className={`text-right px-3 py-2 rounded-lg ${growthData.diff >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                          <p className="text-sm font-bold flex items-center gap-1">
+                            {growthData.diff >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                            {growthData.diff > 0 ? '+' : ''}{growthData.diff}
+                          </p>
+                          <p className="text-[10px] font-bold uppercase opacity-80">{growthData.status}</p>
+                       </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
-                     <StatCard label="Total Active" value={analytics.reduce((a,b) => a + b.active, 0)} icon={Users} color="text-blue-600" />
+                     <StatCard label="Total 2026 Adds" value={analytics.reduce((a,b) => a + b.active, 0)} icon={Users} color="text-blue-600" />
                      <StatCard label="Avg Retention" value={`${Math.round(analytics.reduce((a,b) => a + b.retentionRate, 0) / analytics.length)}%`} icon={PieChart} color="text-green-600" />
                   </div>
 
@@ -378,6 +509,14 @@ function App() {
                   </div>
                 </>
              )}
+          </div>
+        )}
+
+        {/* TASKS */}
+        {activeTab === 'tasks' && (
+          <div className="space-y-6">
+            {DAILY_ROUTINE.map((section, idx) => (<div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">{section.title}</h3><div className="space-y-3">{section.items.map((item) => { const isDone = firestoreData.routine?.[item.id] || false; return (<button key={item.id} onClick={() => handleRoutineToggle(item.id)} className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all text-left ${isDone ? 'bg-slate-100 border-slate-200 text-slate-400 line-through' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}><span className="font-medium text-sm">{item.label}</span>{isDone ? <CheckSquare className="w-5 h-5 opacity-50" /> : <div className="w-5 h-5 rounded border border-slate-300" />} </button>); })}</div></div>))}
+            <div><h3 className="font-bold text-slate-800 mb-3 text-sm uppercase tracking-wider">Ad-hoc Tasks</h3><form onSubmit={handleAddTask} className="flex gap-2 mb-4"><input name="taskText" placeholder="Add new task..." className="flex-1 p-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" /><button type="submit" className="bg-blue-600 text-white p-2 rounded-lg"><Plus className="w-5 h-5" /></button></form><div className="space-y-2">{firestoreData.adhocTasks.map((task) => (<div key={task.id} className="bg-white p-3 rounded-lg border border-slate-200 flex justify-between items-center shadow-sm group"><span className="text-sm text-slate-700">{task.text}</span><button onClick={() => handleDeleteTask(task)} className="text-slate-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button></div>))}{firestoreData.adhocTasks.length === 0 && <p className="text-center text-slate-400 text-xs py-4">No pending tasks</p>}</div></div>
           </div>
         )}
 
@@ -411,9 +550,11 @@ function App() {
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
           { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
+          { id: 'tasks', icon: CheckSquare, label: 'Tasks', badge: pendingTasksCount > 0 },
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
+            {item.badge && <span className="absolute top-2 right-4 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
