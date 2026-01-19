@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Settings, RefreshCw, Loader2, TrendingUp, AlertCircle, 
   LogOut, Mail, Lock, UserPlus, LogIn, Bug, BarChart3, Users, Bell, 
@@ -58,14 +58,11 @@ const RECURRING_BILLS_TEMPLATE = [
 ];
 
 // --- COMPONENTS ---
-const StatCard = ({ label, value, subtext, icon: Icon, color }) => (
-  <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-start justify-between">
-    <div>
-      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">{label}</p>
-      <h3 className={`text-2xl font-bold text-slate-800`}>{value}</h3>
-      {subtext && <p className={`text-xs mt-1 font-medium ${color}`}>{subtext}</p>}
-    </div>
-    {Icon && <div className={`p-2 rounded-lg bg-${color.split('-')[1]}-50 text-${color.split('-')[1]}-500`}><Icon className="w-5 h-5" /></div>}
+const KPICard = ({ title, value, subtext, alert }) => (
+  <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col">
+    <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1">{title}</p>
+    <h3 className={`text-2xl font-bold ${alert ? 'text-red-500' : 'text-slate-800'}`}>{value}</h3>
+    {subtext && <p className="text-xs text-slate-500 mt-2">{subtext}</p>}
   </div>
 );
 
@@ -129,7 +126,8 @@ function App() {
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     ccBalance: 500, // Default Credit Card Balance
-    aiModel: 'gemini-1.5-flash'
+    aiModel: 'gemini-1.5-flash',
+    cashflowPrompt: ''
   });
 
   useEffect(() => {
@@ -147,8 +145,8 @@ function App() {
         if (!data.gasUrl) data.gasUrl = '';
         setFirestoreData(prev => ({ ...prev, ...data })); 
       } else {
-        setDoc(docRef, { gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, aiModel: 'gemini-1.5-flash' });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, aiModel: 'gemini-1.5-flash' });
+        setDoc(docRef, { gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, aiModel: 'gemini-1.5-flash', cashflowPrompt: '' });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, aiModel: 'gemini-1.5-flash', cashflowPrompt: '' });
       }
     });
     return () => unsubscribeSnapshot();
@@ -178,7 +176,8 @@ function App() {
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
-        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash',
+        cashflowPrompt: firestoreData.cashflowPrompt || ''
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -188,7 +187,7 @@ function App() {
 
   // --- CASHFLOW ENGINE ---
   const calculateCashflow = () => {
-    if (!liveData) return { mtdIncome: 0, pendingIncome: 0, pendingExpenses: 0 };
+    if (!liveData) return { mtdIncome: 0, pendingExpenses: 0 };
     
     // 1. MTD Bank Income
     let mtdIncome = 0;
@@ -202,28 +201,11 @@ function App() {
     // 2. Pending Expenses (Burn Rate)
     const today = new Date().getDate();
     let pendingExpenses = 0;
-    // Add dynamic Credit Card bill (due 6th)
     const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: firestoreData.ccBalance }];
     
     bills.forEach(bill => {
         if (bill.day > today) pendingExpenses += bill.amount;
     });
-
-    // 3. Forecasted Revenue (Sheet2 + Sheet3 Logic)
-    let pendingIncome = 0;
-    if (liveData.marketing_raw && liveData.jobs_raw) {
-        // Map Job Refs to Payment Methods from Sheet3
-        const jobMap = {};
-        liveData.jobs_raw.slice(1).forEach(row => {
-            // Adjust indices based on your Sheet3 layout. Assuming:
-            // Ref=Col 0, GC=Col 7, Stripe=Col 8 (Adjust if needed, this searches by header name usually but here using index is risky, ideally we scan headers)
-            // Let's rely on Gemini for the hard logic, here we do a simple estimation:
-            // "Active" in GC or Stripe column implies auto-pay.
-            // For simple math here, we assume any job in Sheet2 'Last Done' within last 7 days + method=auto is pending.
-        });
-        // Note: For the React display, we'll keep it simple: Real Bank vs Target.
-        // The heavy lifting of the 7-day lag is done by Gemini below.
-    }
 
     return { mtdIncome, pendingExpenses };
   };
@@ -232,10 +214,10 @@ function App() {
 
   const runCashflowAnalysis = async () => {
     if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading..."); return; }
+    if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
     
     setIsAnalyzing(true);
     
-    // Prepare Data Snippets (Headers + First 500 rows to save context)
     const bankCSV = liveData.bank_raw.slice(0, 300).map(row => row.join(",")).join("\n");
     const jobsCSV = liveData.jobs_raw.slice(0, 300).map(row => row.join(",")).join("\n");
     const historyCSV = liveData.marketing_raw.slice(0, 300).map(row => row.join(",")).join("\n");
@@ -243,7 +225,8 @@ function App() {
     const systemPrompt = `
       ROLE: Expert Financial Controller for a Window Cleaning Business.
       
-      GOAL: Forecast Month-End Cash Position.
+      TASK: 
+      ${firestoreData.cashflowPrompt}
 
       DATA SOURCES:
       1. RECURRING BILLS (Remaining this month):
@@ -387,6 +370,16 @@ function App() {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label>
                 <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Wallet className="w-4 h-4" /> Cashflow Logic / Prompt</label>
+                <textarea 
+                  value={firestoreData.cashflowPrompt} 
+                  onChange={(e) => setFirestoreData({...firestoreData, cashflowPrompt: e.target.value})}
+                  placeholder="Paste your instructions for the Financial Controller AI here..."
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
