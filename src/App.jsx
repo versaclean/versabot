@@ -3,8 +3,7 @@ import {
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
   Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug, Plus, Trash2, Wallet, Sparkles, CreditCard, Calendar, CheckCircle2, XCircle,
-  PoundSterling
+  Bug, Plus, Trash2, Wallet, Sparkles, CreditCard, Calendar, CheckCircle2, XCircle
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -44,8 +43,6 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
-const DAILY_ROUTINE = []; 
-
 const RECURRING_BILLS_TEMPLATE = [
   { day: 2, name: 'DVLA Tax', amount: 90.54 },
   { day: 6, name: 'Admiral Insurance', amount: 364.47 },
@@ -53,14 +50,20 @@ const RECURRING_BILLS_TEMPLATE = [
   { day: 9, name: 'O2', amount: 33.70 },
   { day: 12, name: 'Airlandline', amount: 11.99 },
   { day: 13, name: 'Cyril Chadwick (Water)', amount: 140.00 },
+  { day: 13, name: 'Varimark (Unit)', amount: 134.00 },
+  { day: 14, name: 'HMRC Shipley (PAYE)', amount: 1246.00 },
   { day: 15, name: 'Virpa (VA)', amount: 300.00 },
+  { day: 16, name: 'Paypal (Phone)', amount: 42.00 },
   { day: 17, name: 'United Trust Bank', amount: 403.27 },
   { day: 18, name: 'Premium Credit', amount: 128.38 },
+  { day: 20, name: 'Nest Pensions', amount: 280.00 },
   { day: 28, name: 'Staff Wages', amount: 6050.00 },
   { day: 29, name: 'LDF Finance', amount: 238.71 },
   { day: 30, name: 'Intuit QuickBooks', amount: 28.68 },
   { day: 'Fri', name: 'Honeycomb (VA)', amount: 35.00 }
 ];
+
+const DAILY_ROUTINE = []; 
 
 // --- COMPONENTS ---
 
@@ -188,12 +191,13 @@ function App() {
   const [bankIncome, setBankIncome] = useState(0);
   const [financeReport, setFinanceReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [debugRevenueCount, setDebugRevenueCount] = useState(0); 
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     ccBalance: 500,
-    bankBalance: 0, // NEW: Manual Bank Balance Input
+    bankBalance: 0,
     cashflowPrompt: '',
     aiModel: 'gemini-1.5-flash'
   });
@@ -220,10 +224,8 @@ function App() {
         setFirestoreData(prev => ({ 
           ...prev, 
           ...data,
-          // Defaults
           aiModel: data.aiModel || 'gemini-1.5-flash',
-          ccBalance: data.ccBalance || 500,
-          bankBalance: data.bankBalance || 0
+          ccBalance: data.ccBalance || 0
         })); 
       } else {
         setDoc(docRef, {
@@ -240,7 +242,7 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- ROBUST DATE PARSER ---
+  // --- DATE PARSING ---
   const parseSheetDate = (dateStr) => {
     if (!dateStr) return null;
     if (dateStr.includes('-')) {
@@ -382,7 +384,7 @@ function App() {
     let pendingExpenses = 0;
     const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: Number(firestoreData.ccBalance) || 500 }];
     bills.forEach(bill => {
-        if (bill.day > today) pendingExpenses += bill.amount;
+        if (typeof bill.day === 'number' && bill.day > today) pendingExpenses += bill.amount;
     });
     return { mtdIncome, pendingExpenses };
   };
@@ -394,7 +396,10 @@ function App() {
     
     setIsAnalyzing(true);
     
-    // --- STEP 1: MATCH BY REFERENCE ---
+    const today = new Date();
+    const forecastEnd = new Date();
+    forecastEnd.setDate(today.getDate() + 21); // 3 Weeks
+
     const paymentMap = {}; 
     const jobRows = liveData.jobs_raw;
     if (jobRows.length > 1) {
@@ -416,13 +421,9 @@ function App() {
         }
     }
 
-    // --- STEP 2: CALCULATE FORECAST (7-Day Lag Rule) ---
-    const today = new Date();
-    const forecastEnd = new Date();
-    forecastEnd.setDate(today.getDate() + 21); // 3 Weeks
-
     const historyRows = liveData.marketing_raw;
-    const revenueEvents = [];
+    const autoPayEvents = [];
+    const manualPayEvents = [];
 
     if (historyRows.length > 1) {
         const hHeaders = historyRows[0].map(h => h.toLowerCase());
@@ -438,26 +439,40 @@ function App() {
                 const name = row[hNameIdx] || ref;
                 const price = parseFloat(row[hPriceIdx]) || 0;
                 
-                if (paymentMap[ref]) {
-                    // A. PENDING REVENUE
-                    if (hLastDoneIdx > -1) {
-                        const lastDone = parseSheetDate(row[hLastDoneIdx]);
-                        if (lastDone) {
-                            const payDate = new Date(lastDone);
-                            payDate.setDate(payDate.getDate() + 7);
-                            if (payDate >= today && payDate <= forecastEnd) {
-                                revenueEvents.push(`PENDING: ${name} (£${price}) - Due: ${payDate.toLocaleDateString()}`);
+                // Determine Payment Type
+                const isAutoPay = paymentMap[ref];
+
+                // Check Future (Next Due)
+                if (hNextDueIdx > -1) {
+                    const nextDue = parseSheetDate(row[hNextDueIdx]);
+                    if (nextDue) {
+                        const lagDays = isAutoPay ? 7 : 14; // 7 for Auto, 14 avg for Manual
+                        const payDate = new Date(nextDue);
+                        payDate.setDate(payDate.getDate() + lagDays);
+                        
+                        if (payDate >= today && payDate <= forecastEnd) {
+                            if (isAutoPay) {
+                                autoPayEvents.push(`AUTOPAY: ${name} (£${price}) - Est: ${payDate.toLocaleDateString()}`);
+                            } else {
+                                manualPayEvents.push(`MANUAL (Var): ${name} (£${price}) - Est: ${payDate.toLocaleDateString()}`);
                             }
                         }
                     }
-                    // B. FUTURE REVENUE
-                    if (hNextDueIdx > -1) {
-                        const nextDue = parseSheetDate(row[hNextDueIdx]);
-                        if (nextDue) {
-                            const payDate = new Date(nextDue);
-                            payDate.setDate(payDate.getDate() + 7); 
-                            if (payDate >= today && payDate <= forecastEnd) {
-                                revenueEvents.push(`FORECAST: ${name} (£${price}) - Est. Pay: ${payDate.toLocaleDateString()}`);
+                }
+
+                // Check Pending (Last Done)
+                if (hLastDoneIdx > -1) {
+                    const lastDone = parseSheetDate(row[hLastDoneIdx]);
+                    if (lastDone) {
+                        const lagDays = isAutoPay ? 7 : 14; 
+                        const payDate = new Date(lastDone);
+                        payDate.setDate(payDate.getDate() + lagDays);
+                        
+                        if (payDate >= today && payDate <= forecastEnd) {
+                            if (isAutoPay) {
+                                autoPayEvents.push(`PENDING AUTO: ${name} (£${price}) - Est: ${payDate.toLocaleDateString()}`);
+                            } else {
+                                manualPayEvents.push(`PENDING MANUAL: ${name} (£${price}) - Est: ${payDate.toLocaleDateString()}`);
                             }
                         }
                     }
@@ -466,42 +481,39 @@ function App() {
         }
     }
     
+    setDebugRevenueCount(autoPayEvents.length + manualPayEvents.length);
+
     const bankCSV = liveData.bank_raw.slice(0, 100).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
     const billsText = RECURRING_BILLS_TEMPLATE.map(b => `- ${b.day}th: ${b.name} (£${b.amount})`).join('\n');
     
-    // UPDATED PROMPT: Weekly Breakdown & Balance Logic
     const systemPrompt = `
       ROLE: Expert Financial Controller.
-      TASK: ${firestoreData.cashflowPrompt || "Forecast Cashflow."}
+      TASK: ${firestoreData.cashflowPrompt}
 
       --- CASH POSITION ---
-      STARTING BALANCE: £${firestoreData.bankBalance} (As entered by user)
+      STARTING BALANCE: £${firestoreData.bankBalance} (User Input)
       REAL-TIME MTD INCOME: £${bankIncome.toFixed(2)}
 
       --- RECURRING BILLS ---
       ${billsText}
       - 6th: Credit Card (£${firestoreData.ccBalance})
 
-      --- 1. PROJECTED REVENUE (Next 3 Weeks) ---
-      (Filtered AutoPay + 7-Day Lag Applied):
-      ${revenueEvents.length > 0 ? revenueEvents.join('\n') : "No AutoPay revenue found."}
+      --- REVENUE FORECAST (Tiered Confidence) ---
+      TIER 1: AutoPay (High Confidence, ~7 Day Lag applied):
+      ${autoPayEvents.length > 0 ? autoPayEvents.join('\n') : "None."}
+      
+      TIER 2: Manual Pay (Variable Confidence, ~14 Day Lag estimated):
+      ${manualPayEvents.length > 0 ? manualPayEvents.join('\n') : "None."}
 
-      --- 2. HISTORY ---
-      MTD TRANSACTIONS (Last 100):
+      --- HISTORY ---
+      MTD TRANSACTIONS (CSV - Last 100):
       ${bankCSV}
       
       OUTPUT FORMAT:
-      1. WEEKLY BREAKDOWN (Next 3 Weeks):
-         - Week 1: Projected Income vs Bills. Net Movement.
-         - Week 2: ...
-         - Week 3: ...
-      2. END OF MONTH SUMMARY:
-         - Projected Bank Balance on 31st.
-         - "ON TRACK" or "BEHIND" Target (£${firestoreData.targets.monthly}).
-      3. VERDICT:
-         - 🟢 SAFE or 🔴 DANGER.
-         - 1 Actionable Tip.
+      1. WEEKLY BREAKDOWN
+      2. END OF MONTH SNAPSHOT
+      3. VERDICT (SAFE/DANGER)
     `;
 
     try {
@@ -539,7 +551,7 @@ function App() {
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
-        bankBalance: Number(firestoreData.bankBalance), // SAVE BANK BALANCE
+        bankBalance: Number(firestoreData.bankBalance),
         cashflowPrompt: firestoreData.cashflowPrompt || '',
         aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
@@ -637,14 +649,13 @@ function App() {
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <h2 className="font-bold text-lg flex items-center gap-2"><Wallet className="w-5 h-5 text-green-400" /> Live Position</h2>
-                        <p className="text-xs text-slate-400">Current Balance + MTD</p>
+                        <p className="text-xs text-slate-400">Month to Date (Starling)</p>
                     </div>
                 </div>
                 <div className="flex items-end justify-between">
                    <div>
-                       {/* Show User Balance if set, else MTD */}
-                       <p className="text-3xl font-bold text-white">{fmt(firestoreData.bankBalance || bankIncome)}</p>
-                       <p className="text-xs text-slate-400 mt-1">Available Funds</p>
+                       <p className="text-3xl font-bold text-white">{fmt(cashflowStats.mtdIncome)}</p>
+                       <p className="text-xs text-slate-400 mt-1">Incoming</p>
                    </div>
                    <div className="text-right">
                        <input 
@@ -676,6 +687,11 @@ function App() {
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">
                     {financeReport || "Tap 'Run Forecast' to analyze pending jobs, VAT rules, and recurring bills..."}
                 </div>
+                
+                {/* Debug Jobs Found */}
+                <div className="mt-2 text-[10px] text-slate-400 text-right">
+                    Revenue Events Found: {debugRevenueCount}
+                </div>
             </div>
           </div>
         )}
@@ -699,19 +715,7 @@ function App() {
                       className="w-full p-2 rounded border border-slate-200 text-sm"
                     />
                  </div>
-              </div>
-              
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><PoundSterling className="w-4 h-4" /> Current Bank Balance</label>
-                 <div className="flex items-center gap-2">
-                    <span className="text-slate-400">£</span>
-                    <input 
-                      type="number" 
-                      value={firestoreData.bankBalance} 
-                      onChange={(e) => setFirestoreData({...firestoreData, bankBalance: e.target.value})}
-                      className="w-full p-2 rounded border border-slate-200 text-sm"
-                    />
-                 </div>
+                 <p className="text-[10px] text-slate-400 mt-2">Update this monthly for accurate forecasting.</p>
               </div>
 
               <div>
