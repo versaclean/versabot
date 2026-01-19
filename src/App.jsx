@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, MessageSquare, Settings, RefreshCw, Loader2, 
-  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Bug, 
-  BarChart3, PieChart, Users, Bell, Wallet, Sparkles, CreditCard, Calendar, 
-  Cpu, Brain, Database, ArrowDownRight, ArrowUpRight
+  LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
+  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
+  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
+  Bug, Plus, Trash2, Wallet, Sparkles, CreditCard, Calendar, CheckCircle2, XCircle
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -11,7 +11,7 @@ import {
   onAuthStateChanged, signOut 
 } from 'firebase/auth';
 import { 
-  getFirestore, doc, onSnapshot, setDoc, updateDoc
+  getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove 
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
@@ -55,7 +55,8 @@ const RECURRING_BILLS_TEMPLATE = [
   { day: 18, name: 'Premium Credit', amount: 128.38 },
   { day: 28, name: 'Staff Wages', amount: 6050.00 },
   { day: 29, name: 'LDF Finance', amount: 238.71 },
-  { day: 30, name: 'Intuit QuickBooks', amount: 28.68 }
+  { day: 30, name: 'Intuit QuickBooks', amount: 28.68 },
+  { day: 'Fri', name: 'Honeycomb (VA)', amount: 35.00 }
 ];
 
 // --- COMPONENTS ---
@@ -178,7 +179,7 @@ function App() {
   const [analytics, setAnalytics] = useState(null);
   const [growthData, setGrowthData] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
-  const [debugInfo, setDebugInfo] = useState(null); // Fixed: Added back
+  const [debugInfo, setDebugInfo] = useState(null); 
   
   // Finance State
   const [bankIncome, setBankIncome] = useState(0);
@@ -227,6 +228,32 @@ function App() {
     return () => unsubscribeSnapshot();
   }, [user]);
 
+  // --- ROBUST DATE PARSER (YYYY-MM-DD or DD/MM/YYYY) ---
+  const parseSheetDate = (dateStr) => {
+    if (!dateStr) return null;
+    
+    // 1. Handle YYYY-MM-DD (e.g., 2026-02-06)
+    if (dateStr.includes('-')) {
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            // new Date(Year, MonthIndex, Day) -> Avoids timezone offset issues of parse()
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+    }
+    
+    // 2. Handle DD/MM/YYYY (Legacy backup)
+    if (dateStr.includes('/')) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+            return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+    }
+    
+    // 3. Fallback
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   // --- ANALYTICS PROCESSING ---
   const processMarketingData = (rawData) => {
     if (!rawData || rawData.length < 2) return null;
@@ -252,12 +279,16 @@ function App() {
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
     let totalActiveCount = 0; 
-    const TRACK_START_DATE = new Date('2026-01-12');
+    const TRACK_START_DATE = new Date(2026, 0, 12); // Jan 12, 2026
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
-        const createdDate = new Date(row[idx.created]);
-        if (isNaN(createdDate) || createdDate < TRACK_START_DATE) continue; 
+        
+        // Parse using robust YYYY-MM-DD logic
+        const createdDate = parseSheetDate(row[idx.created]);
+
+        // Filter: Ignore pre-2026
+        if (!createdDate || createdDate < TRACK_START_DATE) continue; 
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
         const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
@@ -277,8 +308,8 @@ function App() {
             } 
             else if (state === 'inactive') {
                 sources[sourceKey].churn++;
-                const last = new Date(row[idx.lastDone]);
-                if (!isNaN(last)) {
+                const last = parseSheetDate(row[idx.lastDone]);
+                if (last) {
                     const months = (last.getFullYear() - createdDate.getFullYear()) * 12 + (last.getMonth() - createdDate.getMonth());
                     if (months > 0) sources[sourceKey].lifespans.push(months);
                 }
@@ -288,8 +319,9 @@ function App() {
 
     const START_COUNT = 814;
     const END_COUNT = 1600;
-    const TRACK_END_DATE = new Date('2026-12-31');
+    const TRACK_END_DATE = new Date(2026, 11, 31);
     const today = new Date();
+    
     const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
     const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
     const timeElapsed = today - TRACK_START_DATE;
@@ -329,7 +361,7 @@ function App() {
       const res = await fetch(secureUrl);
       const data = await res.json();
       
-      setDebugInfo(data); // Stores raw response for Settings Debug
+      setDebugInfo(data);
 
       if (data.error) {
         setAnalyticsError(data.error);
@@ -371,7 +403,8 @@ function App() {
     
     setIsAnalyzing(true);
     
-    const bankCSV = liveData.bank_raw.slice(0, 300).map(row => row.join(",")).join("\n");
+    const bankCSV = liveData.bank_raw.slice(0, 150).map(row => row.join(",")).join("\n");
+    const jobsCSV = liveData.jobs_raw.slice(0, 300).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
     
     const customerSummary = {
@@ -388,13 +421,14 @@ function App() {
 
       --- FINANCIAL DATA ---
       1. MONTHLY TARGET: ${targets}
-      2. MTD TRANSACTIONS (CSV):
+      2. MTD TRANSACTIONS (CSV - Last 150):
       ${bankCSV}
+      3. ACTIVE JOBS (CSV - Next 300 due):
+      ${jobsCSV}
       
       --- BUSINESS HEALTH ---
       1. TOTAL ACTIVE: ${customerSummary.totalActive} (Goal: ${customerSummary.growthTarget})
       2. GROWTH: ${customerSummary.growthStatus}
-      3. CHURN: ${customerSummary.churnCount}
       
       OUTPUT FORMAT:
       - Plain text.
@@ -404,7 +438,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-1.5-flash'}:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-2.0-flash-exp'}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -438,7 +472,7 @@ function App() {
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
         cashflowPrompt: firestoreData.cashflowPrompt || '',
-        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
+        aiModel: firestoreData.aiModel || 'gemini-2.0-flash-exp'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -593,7 +627,7 @@ function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label>
-                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
+                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-2.0-flash-exp" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
               </div>
 
               <div>
@@ -613,8 +647,15 @@ function App() {
                    debugInfo?.marketing_raw ? `Connected. Columns: ${JSON.stringify(debugInfo.marketing_raw[0])}` : 
                    "No Data. Check URL."}
                 </p>
-                {debugInfo?.available_tabs && (
-                   <p className="text-[10px] text-red-500 font-mono mt-1">Available Tabs: {JSON.stringify(debugInfo.available_tabs)}</p>
+                {debugInfo?.debug_sheets_found && (
+                   <div className="mt-2 text-[10px] grid grid-cols-2 gap-1">
+                     {Object.entries(debugInfo.debug_sheets_found).map(([name, found]) => (
+                        <div key={name} className={`flex items-center gap-1 ${found ? 'text-green-600' : 'text-red-500 font-bold'}`}>
+                           {found ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                           {name}
+                        </div>
+                     ))}
+                   </div>
                 )}
               </div>
 
