@@ -43,36 +43,7 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
-const DAILY_ROUTINE = [
-  {
-    title: '☀️ Morning Kickoff',
-    timeBlock: 'morning',
-    notifyAt: '09:30',
-    items: [
-      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
-      { id: 'm_team', label: 'Go see team (get photo/video)' }
-    ]
-  },
-  {
-    title: '☕ Midday Check-in',
-    timeBlock: 'midday',
-    notifyAt: '12:30',
-    items: [
-      { id: 'mid_texts', label: 'Check texts for updates' },
-      { id: 'mid_va', label: 'Check items from VA' }
-    ]
-  },
-  {
-    title: '🌙 Close Down',
-    timeBlock: 'evening',
-    notifyAt: '16:00',
-    items: [
-      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
-      { id: 'close_texts', label: 'Check text messages' },
-      { id: 'close_va', label: 'Check VA messages' }
-    ]
-  }
-];
+const DAILY_ROUTINE = []; 
 
 const RECURRING_BILLS_TEMPLATE = [
   { day: 2, name: 'DVLA Tax', amount: 90.54 },
@@ -161,45 +132,8 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    if (!auth) { setError("App not configured"); return; }
-    try {
-      if (isSignUp) await createUserWithEmailAndPassword(auth, email, password);
-      else await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      setError(err.message.replace('Firebase:', '').trim());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm border border-slate-100">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">versaBOT</h1>
-          <p className="text-slate-400 text-sm">Business Manager</p>
-        </div>
-        {error && <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 uppercase">Email</label>
-            <div className="relative"><Mail className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="email" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)}/></div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 uppercase">Password</label>
-            <div className="relative"><Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="password" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}/></div>
-          </div>
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 disabled:opacity-50">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />)} {isSignUp ? 'Create Account' : 'Sign In'}</button>
-        </form>
-        <button onClick={() => setIsSignUp(!isSignUp)} className="w-full mt-4 text-xs text-slate-500 hover:text-blue-600">{isSignUp ? "Already have an account? Sign In" : "Need an account? Create one"}</button>
-      </div>
-    </div>
-  );
+  const handleSubmit = async (e) => { e.preventDefault(); setError(''); setLoading(true); if (!auth) { setError("App not configured"); return; } try { isSignUp ? await createUserWithEmailAndPassword(auth, email, password) : await signInWithEmailAndPassword(auth, email, password); } catch (err) { setError(err.message.replace('Firebase:', '').trim()); } finally { setLoading(false); } };
+  return (<div className="min-h-screen flex items-center justify-center bg-slate-50 p-4"><div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm border border-slate-100"><div className="text-center mb-8"><h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">versaBOT</h1><p className="text-slate-400 text-sm">Business Manager</p></div>{error && <div className="mb-4 p-3 bg-red-50 text-red-500 text-xs rounded-lg flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}<form onSubmit={handleSubmit} className="space-y-4"><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Email</label><div className="relative"><Mail className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="email" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)}/></div></div><div className="space-y-1"><label className="text-xs font-semibold text-slate-500 uppercase">Password</label><div className="relative"><Lock className="w-5 h-5 absolute left-3 top-3 text-slate-400" /><input type="password" required className="w-full pl-10 p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-600 bg-slate-50" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}/></div></div><button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex justify-center items-center gap-2 disabled:opacity-50">{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />)} {isSignUp ? 'Create Account' : 'Sign In'}</button></form><button onClick={() => setIsSignUp(!isSignUp)} className="w-full mt-4 text-xs text-slate-500 hover:text-blue-600">{isSignUp ? "Already have an account? Sign In" : "Need an account? Create one"}</button></div></div>);
 };
 
 function App() {
@@ -222,18 +156,12 @@ function App() {
     targets: { monthly: 20000, weekly: 5000 },
     ccBalance: 500,
     cashflowPrompt: '',
-    aiModel: 'gemini-1.5-flash'
+    aiModel: 'gemini-2.0-flash-exp'
   });
 
   useEffect(() => {
-    if (!isConfigured || !auth) {
-      setAuthLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setAuthLoading(false);
-    });
+    if (!isConfigured || !auth) { setAuthLoading(false); return; }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => { setUser(currentUser); setAuthLoading(false); });
     return () => unsubscribe();
   }, []);
 
@@ -244,60 +172,35 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (!data.gasUrl) data.gasUrl = '';
-        setFirestoreData(prev => ({ 
-          ...prev, 
-          ...data,
-          // Ensure defaults if fields missing
-          aiModel: data.aiModel || 'gemini-1.5-flash',
-          ccBalance: data.ccBalance || 0
-        })); 
+        setFirestoreData(prev => ({ ...prev, ...data, aiModel: data.aiModel || 'gemini-2.0-flash-exp' })); 
       } else {
-        setDoc(docRef, {
-          gasUrl: '',
-          targets: { monthly: 20000, weekly: 5000 },
-          ccBalance: 500,
-          cashflowPrompt: '',
-          aiModel: 'gemini-1.5-flash'
-        });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, cashflowPrompt: '', aiModel: 'gemini-1.5-flash' });
+        setDoc(docRef, { gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, cashflowPrompt: '', aiModel: 'gemini-2.0-flash-exp' });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, cashflowPrompt: '', aiModel: 'gemini-2.0-flash-exp' });
       }
     });
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- ROBUST DATE PARSER (YYYY-MM-DD or DD/MM/YYYY) ---
+  // --- UTILS ---
   const parseSheetDate = (dateStr) => {
     if (!dateStr) return null;
-    if (dateStr.includes('-')) {
-        const parts = dateStr.split('-');
-        if (parts.length === 3) return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    }
-    if (dateStr.includes('/')) {
-        const parts = dateStr.split('/');
-        if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-    }
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? null : d;
+    if (dateStr.includes('-')) { const parts = dateStr.split('-'); if (parts.length === 3) return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])); }
+    if (dateStr.includes('/')) { const parts = dateStr.split('/'); if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])); }
+    const d = new Date(dateStr); return isNaN(d.getTime()) ? null : d;
   };
 
-  // --- ANALYTICS PROCESSING ---
+  // --- ANALYTICS ---
   const processMarketingData = (rawData) => {
     if (!rawData || rawData.length < 2) return null;
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
     const idx = {
-        source: headers.indexOf('source'),
-        created: headers.indexOf('created'),
-        lastDone: headers.indexOf('last done'), 
-        state: headers.indexOf('state'),
+        source: headers.indexOf('source'), created: headers.indexOf('created'),
+        lastDone: headers.indexOf('last done'), state: headers.indexOf('state'),
         jobState: headers.findIndex(h => h.includes('job') && h.includes('state')), 
-        service: headers.indexOf('services'),
-        freq: headers.indexOf('frequency')
+        service: headers.indexOf('services'), freq: headers.indexOf('frequency')
     };
 
-    if (idx.source === -1 || idx.state === -1 || idx.jobState === -1) {
-        setAnalyticsError(`Missing Columns. Found: ${headers.join(', ')}`);
-        return null;
-    }
+    if (idx.source === -1 || idx.state === -1) { setAnalyticsError(`Missing Columns`); return null; }
 
     const sources = {};
     const validSources = ['LSA', 'Facebook Ads', 'Website', 'Leaflet', 'Canvassed', 'Social Media', 'Google'];
@@ -305,7 +208,7 @@ function App() {
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
     let totalActiveCount = 0; 
-    const TRACK_START_DATE = new Date(2026, 0, 12); // Jan 12, 2026
+    const TRACK_START_DATE = new Date(2026, 0, 12);
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
@@ -314,12 +217,10 @@ function App() {
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
         const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
-        
         const state = row[idx.state]?.toString().trim().toLowerCase() || '';
         const jobState = row[idx.jobState]?.toString().trim().toLowerCase() || '';
         const service = row[idx.service]?.toString().toLowerCase() || '';
         const freq = row[idx.freq]?.toString().toLowerCase() || '';
-
         const isWindowCleaning = service.includes('window cleaning'); 
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
@@ -343,23 +244,15 @@ function App() {
     const END_COUNT = 1600;
     const TRACK_END_DATE = new Date(2026, 11, 31);
     const today = new Date();
-    const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
-    const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
-    const timeElapsed = today - TRACK_START_DATE;
-    const daysPassed = timeElapsed > 0 ? Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)) : 0;
-    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
+    const daysPassed = Math.ceil((today - TRACK_START_DATE) / (1000 * 60 * 60 * 24)); 
+    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / 353; // Approx days
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
     const actualToday = START_COUNT + totalActiveCount;
     
-    setGrowthData({
-        actual: actualToday,
-        target: targetToday,
-        diff: actualToday - targetToday,
-        status: (actualToday - targetToday) >= 0 ? 'Ahead' : 'Behind'
-    });
+    setGrowthData({ actual: actualToday, target: targetToday, diff: actualToday - targetToday, status: (actualToday - targetToday) >= 0 ? 'Ahead' : 'Behind' });
 
     return Object.entries(sources).map(([name, data]) => ({
-        name, active: data.active, churn: data.churn, total: data.active + data.churn,
+        name, active: data.active, churn: data.churn,
         retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
         avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
     })).sort((a,b) => b.active - a.active); 
@@ -381,100 +274,156 @@ function App() {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
-      
       setDebugInfo(data);
-
-      if (data.error) {
-        setAnalyticsError(data.error);
-      } else {
+      if (data.error) { setAnalyticsError(data.error); } 
+      else {
         setLiveData(data);
-        if (data.marketing_raw) {
-            const processed = processMarketingData(data.marketing_raw);
-            setAnalytics(processed);
-        }
+        if (data.marketing_raw) setAnalytics(processMarketingData(data.marketing_raw));
         if (data.bank_raw) processBankData(data.bank_raw);
       }
-      return data;
-    } catch (error) { 
-        setAnalyticsError(error.message);
-        return null; 
-    }
+    } catch (error) { setAnalyticsError(error.message); }
   };
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
 
-  // --- CASHFLOW CALCULATION ---
-  const calculateCashflow = () => {
-    if (!liveData) return { mtdIncome: 0, pendingExpenses: 0 };
-    let mtdIncome = bankIncome;
-    const today = new Date().getDate();
-    let pendingExpenses = 0;
-    const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: Number(firestoreData.ccBalance) || 500 }];
-    bills.forEach(bill => {
-        if (bill.day > today) pendingExpenses += bill.amount;
-    });
-    return { mtdIncome, pendingExpenses };
-  };
-
-  const cashflowStats = useMemo(calculateCashflow, [liveData, bankIncome, firestoreData.ccBalance]);
-
+  // --- CASHFLOW ENGINE (THE BRAIN) ---
   const runCashflowAnalysis = async () => {
-    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading or Missing (Check Debug in Settings)"); return; }
-    if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
+    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading..."); return; }
     
     setIsAnalyzing(true);
     
-    // OPTIMIZED DATA SLICING FOR SPEED
-    const bankCSV = liveData.bank_raw.slice(0, 150).map(row => row.join(",")).join("\n");
-    // Sheet3: Payment Methods
-    const jobsCSV = liveData.jobs_raw.slice(0, 300).map(row => row.join(",")).join("\n");
-    // Sheet2: Schedule/Dates
-    const scheduleCSV = liveData.marketing_raw.slice(0, 300).map(row => row.join(",")).join("\n");
-    const targets = JSON.stringify(firestoreData.targets);
-    
-    // Create text string for bills to pass explicitly to AI
-    const billsText = RECURRING_BILLS_TEMPLATE.map(b => `- ${b.day}th: ${b.name} (£${b.amount})`).join('\n');
-    
-    const customerSummary = {
-        totalActive: growthData?.actual || 814,
-        growthTarget: growthData?.target,
-        growthStatus: growthData?.status,
-        churnCount: liveData?.customers?.churn_count || 0,
-        newValue: liveData?.customers?.new_value_4w || 0
-    };
+    // 1. CALCULATE PROJECTED REVENUE
+    // We need to cross reference Sheet3 (Payment Methods) with Sheet2 (Dates)
+    // Sheet 3 Headers: Check for 'GoCardless' (Col 7) and 'Stripe' (Col 8) - Fuzzy logic used
+    const jobRows = liveData.jobs_raw;
+    const historyRows = liveData.marketing_raw;
+
+    // Create Map: Customer Name -> Payment Method
+    const paymentMap = {};
+    if (jobRows.length > 1) {
+        // Assume Col 3 = Name. Check headers for GC/Stripe
+        const jHeaders = jobRows[0].map(h => h.toLowerCase());
+        const nameIdx = 3; 
+        const gcIdx = jHeaders.findIndex(h => h.includes('gocardless'));
+        const stripeIdx = jHeaders.findIndex(h => h.includes('stripe'));
+        
+        for (let i=1; i<jobRows.length; i++) {
+            const row = jobRows[i];
+            const name = row[nameIdx]?.trim();
+            if (name) {
+                const isAutoPay = (gcIdx > -1 && row[gcIdx]?.toLowerCase().includes('active')) || 
+                                  (stripeIdx > -1 && row[stripeIdx]?.toLowerCase().includes('active'));
+                if (isAutoPay) paymentMap[name] = true;
+            }
+        }
+    }
+
+    // Scan Schedule for Revenue
+    const today = new Date();
+    let projectedRevenue = 0;
+    const upcomingJobs = [];
+
+    if (historyRows.length > 1) {
+        const hHeaders = historyRows[0].map(h => h.toLowerCase());
+        const nameIdx = 3; 
+        const lastDoneIdx = hHeaders.indexOf('last done');
+        const nextDueIdx = hHeaders.indexOf('next due');
+        const priceIdx = hHeaders.indexOf('price');
+
+        for (let i=1; i<historyRows.length; i++) {
+            const row = historyRows[i];
+            const name = row[nameIdx]?.trim();
+            const price = parseFloat(row[priceIdx]) || 0;
+            
+            if (paymentMap[name]) { // Only calculate if AutoPay
+                // Rule 1: Cleaned Last Week (Last Done + 7 Days > Today)
+                const lastDone = parseSheetDate(row[lastDoneIdx]);
+                if (lastDone) {
+                    const paymentDate = new Date(lastDone);
+                    paymentDate.setDate(paymentDate.getDate() + 7);
+                    if (paymentDate >= today && paymentDate <= new Date(today.getTime() + 21*24*60*60*1000)) {
+                        projectedRevenue += price;
+                        upcomingJobs.push(`${name} (£${price}) - Due: ${paymentDate.toLocaleDateString()}`);
+                        continue; // Don't double count
+                    }
+                }
+
+                // Rule 2: Due Next 2 Weeks (Next Due + 7 Days)
+                const nextDue = parseSheetDate(row[nextDueIdx]);
+                if (nextDue) {
+                    const paymentDate = new Date(nextDue);
+                    paymentDate.setDate(paymentDate.getDate() + 7);
+                    // Check if payment falls in our 21 day window
+                    if (paymentDate >= today && paymentDate <= new Date(today.getTime() + 21*24*60*60*1000)) {
+                         projectedRevenue += price;
+                         upcomingJobs.push(`${name} (£${price}) - Forecast: ${paymentDate.toLocaleDateString()}`);
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply VAT Rule
+    const netProjected = projectedRevenue * 0.82; // Remove 18%
+
+    // 2. CHECK PAID BILLS
+    const bankCSV = liveData.bank_raw.slice(1).map(r => r.join(" ")).join("\n").toLowerCase();
+    const pendingBills = [];
+    let committedSpend = 0;
+
+    RECURRING_BILLS_TEMPLATE.forEach(bill => {
+        const billDay = typeof bill.day === 'number' ? bill.day : 99; // 99 for weekly items logic needed later
+        // Simple check: Has this bill name appeared in bank CSV this month?
+        // Note: Ideally check date, but name match is a good proxy for "Paid this month"
+        if (!bankCSV.includes(bill.name.toLowerCase().split(' ')[0])) { 
+             // Determine if it falls in the 21 day window
+             const currentDay = today.getDate();
+             let isDue = false;
+             // Logic: If bill day is upcoming in current month OR early next month
+             if (billDay > currentDay || billDay < 10) isDue = true; 
+             
+             if (isDue) {
+                pendingBills.push(`${bill.name} (£${bill.amount})`);
+                committedSpend += bill.amount;
+             }
+        }
+    });
+
+    // Add Credit Card if not paid
+    if (!bankCSV.includes('credit card') && firestoreData.ccBalance > 0) {
+        pendingBills.push(`Credit Card (£${firestoreData.ccBalance})`);
+        committedSpend += Number(firestoreData.ccBalance);
+    }
 
     const systemPrompt = `
-      ROLE: Expert Financial Controller.
-      TASK: ${firestoreData.cashflowPrompt}
+      ROLE: Aggressive Financial Controller.
+      
+      TASK: 
+      ${firestoreData.cashflowPrompt}
 
-      --- RECURRING BILLS LIST ---
-      ${billsText}
-      - 6th: Credit Card (£${firestoreData.ccBalance})
+      --- PRE-CALCULATED DATA (By App Engine) ---
+      1. REAL-TIME MTD INCOME: £${bankIncome.toFixed(2)}
+      2. PROJECTED REVENUE (Next 21 Days): £${netProjected.toFixed(2)}
+         (Calculated using 7-Day Lag Rule on AutoPay customers & 18% VAT Removed)
+      3. COMMITTED SPEND (Remaining): £${committedSpend.toFixed(2)}
+      
+      --- LISTS ---
+      PENDING BILLS: 
+      ${pendingBills.join(', ')}
 
-      --- FINANCIAL DATA ---
-      1. MONTHLY TARGET: ${targets}
-      2. MTD TRANSACTIONS (CSV - Last 150):
-      ${bankCSV}
-      
-      --- REVENUE FORECASTING DATA ---
-      3. SHEET2_SCHEDULE (Dates & State):
-      ${scheduleCSV}
-      4. SHEET3_PAYMENTS (Payment Methods):
-      ${jobsCSV}
-      
-      --- BUSINESS HEALTH ---
-      1. TOTAL ACTIVE: ${customerSummary.totalActive} (Goal: ${customerSummary.growthTarget})
-      2. GROWTH: ${customerSummary.growthStatus}
-      
-      OUTPUT FORMAT:
-      - Plain text.
-      - Use bullet points.
+      FORECASTED JOB PAYMENTS (Sample):
+      ${upcomingJobs.slice(0, 10).join(', ')}...
+
+      OUTPUT:
+      - Start with verdict: 🟢 SAFE or 🔴 DANGER.
+      - Net Cash Position (Income - Spend).
+      - Specific warnings about bills vs revenue timing.
       - Currency: GBP (£).
     `;
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-1.5-flash'}:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-2.0-flash-exp'}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -482,21 +431,13 @@ function App() {
         }
       );
       const data = await response.json();
-      if(data.error) {
-          setFinanceReport("Error: " + data.error.message);
-      } else {
-          setFinanceReport(data.candidates?.[0]?.content?.parts?.[0]?.text || "No analysis generated.");
-      }
+      setFinanceReport(data.candidates?.[0]?.content?.parts?.[0]?.text || "Analysis Failed.");
     } catch (e) {
         setFinanceReport("Connection Error: " + e.message);
     } finally {
         setIsAnalyzing(false);
     }
   };
-
-
-  // --- HANDLERS ---
-  const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
 
   const handleSettingsSave = async (e) => {
     e.preventDefault();
@@ -508,12 +449,13 @@ function App() {
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
         cashflowPrompt: firestoreData.cashflowPrompt || '',
-        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
+        aiModel: firestoreData.aiModel || 'gemini-2.0-flash-exp'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
   };
 
+  const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
   const fmt = (num) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(num || 0);
 
   if (!isConfigured) return <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 text-center"><AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" /><h1 className="text-xl font-bold">Setup Required</h1><p>Missing Env Vars</p></div>;
@@ -531,8 +473,6 @@ function App() {
       </div>
 
       <main className="p-4 max-w-2xl mx-auto">
-        
-        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {!firestoreData.gasUrl && <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg flex gap-3 items-start"><AlertCircle className="w-5 h-5 text-yellow-600 shrink-0 mt-0.5" /><div><h3 className="font-semibold text-yellow-800 text-sm">Setup Required</h3><p className="text-xs text-yellow-700 mt-1">Configure Data Source in settings.</p></div></div>}
@@ -541,177 +481,50 @@ function App() {
           </div>
         )}
 
-        {/* MARKETING ANALYTICS */}
         {activeTab === 'marketing' && (
           <div className="space-y-6">
-             <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg">
-                <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2>
-                <p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p>
-             </div>
-
-             {analyticsError ? (
-                 <div className="bg-red-50 p-4 rounded-xl text-red-600 text-sm">
-                     <p className="font-bold flex items-center gap-2"><Bug className="w-4 h-4"/> Data Error</p>
-                     <p className="mt-1">{analyticsError}</p>
-                     <p className="text-xs mt-2 text-red-500">Check 'Settings' > 'Debug' for loaded headers.</p>
-                 </div>
-             ) : !analytics ? (
-                <div className="text-center py-10 text-slate-400 flex flex-col items-center">
-                    <Loader2 className="w-8 h-8 animate-spin mb-2" />
-                    <p className="text-xs">Processing data...</p>
-                </div>
-             ) : (
+             <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg"><h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2><p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p></div>
+             {analyticsError ? <div className="bg-red-50 p-4 rounded-xl text-red-600 text-sm"><p className="font-bold flex items-center gap-2"><Bug className="w-4 h-4"/> Data Error</p><p className="mt-1">{analyticsError}</p></div> : !analytics ? <div className="text-center py-10 text-slate-400 flex flex-col items-center"><Loader2 className="w-8 h-8 animate-spin mb-2" /><p className="text-xs">Processing data...</p></div> : (
                 <>
-                  {/* GROWTH TRACKER */}
-                  {growthData && (
-                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between">
-                       <div>
-                          <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Growth Track (Goal: 1600)</p>
-                          <h3 className="text-2xl font-bold text-slate-800">{growthData.actual} <span className="text-xs text-slate-400 font-normal">/ {growthData.target} target</span></h3>
-                       </div>
-                       <div className={`text-right px-3 py-2 rounded-lg ${growthData.diff >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                          <p className="text-sm font-bold flex items-center gap-1">
-                            {growthData.diff >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                            {growthData.diff > 0 ? '+' : ''}{growthData.diff}
-                          </p>
-                          <p className="text-[10px] font-bold uppercase opacity-80">{growthData.status}</p>
-                       </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                     <StatCard label="Total 2026 Adds" value={analytics.reduce((a,b) => a + b.active, 0)} icon={Users} color="text-blue-600" />
-                     <StatCard label="Avg Retention" value={`${Math.round(analytics.reduce((a,b) => a + b.retentionRate, 0) / analytics.length)}%`} icon={PieChart} color="text-green-600" />
-                  </div>
-
-                  <div>
-                     <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><Database className="w-4 h-4 text-blue-600" /> Source Breakdown</h3>
-                     <div className="space-y-3">
-                        {analytics.map((source) => (
-                           <SourceRow key={source.name} source={source.name} data={source} />
-                        ))}
-                     </div>
-                  </div>
+                  {growthData && <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between"><div><p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Growth Track (Goal: 1600)</p><h3 className="text-2xl font-bold text-slate-800">{growthData.actual} <span className="text-xs text-slate-400 font-normal">/ {growthData.target} target</span></h3></div><div className={`text-right px-3 py-2 rounded-lg ${growthData.diff >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}><p className="text-sm font-bold flex items-center gap-1">{growthData.diff >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}{growthData.diff > 0 ? '+' : ''}{growthData.diff}</p><p className="text-[10px] font-bold uppercase opacity-80">{growthData.status}</p></div></div>}
+                  <div className="grid grid-cols-2 gap-3"><StatCard label="Total 2026 Adds" value={analytics.reduce((a,b) => a + b.active, 0)} icon={Users} color="text-blue-600" /><StatCard label="Avg Retention" value={`${Math.round(analytics.reduce((a,b) => a + b.retentionRate, 0) / analytics.length)}%`} icon={PieChart} color="text-green-600" /></div>
+                  <div><h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><Database className="w-4 h-4 text-blue-600" /> Source Breakdown</h3><div className="space-y-3">{analytics.map((source) => <SourceRow key={source.name} source={source.name} data={source} />)}</div></div>
                 </>
              )}
           </div>
         )}
 
-        {/* CASHFLOW TAB */}
         {activeTab === 'finance' && (
           <div className="space-y-6">
             <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg">
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h2 className="font-bold text-lg flex items-center gap-2"><Wallet className="w-5 h-5 text-green-400" /> Live Position</h2>
-                        <p className="text-xs text-slate-400">Month to Date (Starling)</p>
-                    </div>
-                </div>
-                <div className="flex items-end justify-between">
-                   <div>
-                       <p className="text-3xl font-bold text-white">{fmt(cashflowStats.mtdIncome)}</p>
-                       <p className="text-xs text-slate-400 mt-1">Incoming</p>
-                   </div>
-                   <div className="text-right">
-                       <p className="text-xl font-bold text-red-400">-{fmt(cashflowStats.pendingExpenses)}</p>
-                       <p className="text-xs text-slate-400 mt-1">Est. Bills Remaining</p>
-                   </div>
-                </div>
+                <div className="flex justify-between items-start mb-4"><div><h2 className="font-bold text-lg flex items-center gap-2"><Wallet className="w-5 h-5 text-green-400" /> Live Position</h2><p className="text-xs text-slate-400">Month to Date (Starling)</p></div></div>
+                <div className="flex items-end justify-between"><div><p className="text-3xl font-bold text-white">{fmt(bankIncome)}</p><p className="text-xs text-slate-400 mt-1">Incoming</p></div><div className="text-right"></div></div>
             </div>
-
-            {/* AI Analysis */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                <div className="flex justify-between items-center mb-4">
-                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-600" /> AI Forecast</h3>
-                   <button 
-                      onClick={runCashflowAnalysis} 
-                      disabled={isAnalyzing}
-                      className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 flex items-center gap-2"
-                   >
-                      {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                      {isAnalyzing ? "Analyzing..." : "Run Forecast"}
-                   </button>
-                </div>
-                <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">
-                    {financeReport || "Tap 'Run Forecast' to analyze pending jobs, VAT rules, and recurring bills..."}
-                </div>
+                <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-600" /> AI Forecast</h3><button onClick={runCashflowAnalysis} disabled={isAnalyzing} className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 flex items-center gap-2">{isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}{isAnalyzing ? "Analyzing..." : "Run Forecast"}</button></div>
+                <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">{financeReport || "Tap 'Run Forecast' to analyze pending jobs, VAT rules, and recurring bills..."}</div>
             </div>
           </div>
         )}
 
-        {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold">Configuration</h2>
             <form onSubmit={handleSettingsSave} className="space-y-4">
               <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label><input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div></div>
-              
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Credit Card (Due 6th)</label>
-                 <div className="flex items-center gap-2">
-                    <span className="text-slate-400">£</span>
-                    <input 
-                      type="number" 
-                      value={firestoreData.ccBalance} 
-                      onChange={(e) => setFirestoreData({...firestoreData, ccBalance: e.target.value})}
-                      className="w-full p-2 rounded border border-slate-200 text-sm"
-                    />
-                 </div>
-                 <p className="text-[10px] text-slate-400 mt-2">Update this monthly for accurate forecasting.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label>
-                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Wallet className="w-4 h-4" /> Cashflow Logic / Prompt</label>
-                <textarea 
-                  value={firestoreData.cashflowPrompt} 
-                  onChange={(e) => setFirestoreData({...firestoreData, cashflowPrompt: e.target.value})}
-                  placeholder="Paste your instructions for the Financial Controller AI here..."
-                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-
-              <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
-                <p className="text-[10px] text-slate-500 font-mono break-all">
-                  {debugInfo?.error ? `Script Error: ${debugInfo.error}` : 
-                   debugInfo?.marketing_raw ? `Connected. Columns: ${JSON.stringify(debugInfo.marketing_raw[0])}` : 
-                   "No Data. Check URL."}
-                </p>
-                {debugInfo?.debug_sheets_found && (
-                   <div className="mt-2 text-[10px] grid grid-cols-2 gap-1">
-                     {Object.entries(debugInfo.debug_sheets_found).map(([name, found]) => (
-                        <div key={name} className={`flex items-center gap-1 ${found ? 'text-green-600' : 'text-red-500 font-bold'}`}>
-                           {found ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                           {name}
-                        </div>
-                     ))}
-                   </div>
-                )}
-              </div>
-
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200"><label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><CreditCard className="w-4 h-4" /> Credit Card (Due 6th)</label><div className="flex items-center gap-2"><span className="text-slate-400">£</span><input type="number" value={firestoreData.ccBalance} onChange={(e) => setFirestoreData({...firestoreData, ccBalance: e.target.value})} className="w-full p-2 rounded border border-slate-200 text-sm" /></div></div>
+              <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label><input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-2.0-flash-exp" className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
+              <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Wallet className="w-4 h-4" /> Cashflow Logic / Prompt</label><textarea value={firestoreData.cashflowPrompt} onChange={(e) => setFirestoreData({...firestoreData, cashflowPrompt: e.target.value})} placeholder="Paste your instructions for the Financial Controller AI here..." className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600" /></div>
+              <div className="bg-slate-100 p-4 rounded-lg overflow-hidden"><label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label><p className="text-[10px] text-slate-500 font-mono break-all">{debugInfo?.error ? `Script Error: ${debugInfo.error}` : debugInfo?.marketing_raw ? `Connected. Columns: ${JSON.stringify(debugInfo.marketing_raw[0])}` : "No Data. Check URL."}</p></div>
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
             </form>
           </div>
         )}
       </main>
-
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-2 pb-safe flex justify-between items-center z-20">
-        {[
-          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
-          { id: 'finance', icon: Wallet, label: 'Cashflow' }, 
-          { id: 'settings', icon: Settings, label: 'Settings' }
-        ].map((item) => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
-            <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">{item.label}</span>
-          </button>
+        {[{ id: 'dashboard', icon: LayoutDashboard, label: 'Home' }, { id: 'marketing', icon: BarChart3, label: 'Analytics' }, { id: 'finance', icon: Wallet, label: 'Cashflow' }, { id: 'settings', icon: Settings, label: 'Settings' }].map((item) => (
+          <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}><item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} /><span className="text-[10px] font-medium">{item.label}</span></button>
         ))}
       </nav>
     </div>
