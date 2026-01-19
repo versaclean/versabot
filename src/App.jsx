@@ -185,6 +185,7 @@ function App() {
   const [bankIncome, setBankIncome] = useState(0);
   const [financeReport, setFinanceReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [debugRevenueCount, setDebugRevenueCount] = useState(0); // Debug how many jobs found
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
@@ -273,7 +274,7 @@ function App() {
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
     let totalActiveCount = 0; 
-    const TRACK_START_DATE = new Date(2026, 0, 12); // Jan 12, 2026
+    const TRACK_START_DATE = new Date(2026, 0, 12);
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
@@ -311,11 +312,8 @@ function App() {
     const END_COUNT = 1600;
     const TRACK_END_DATE = new Date(2026, 11, 31);
     const today = new Date();
-    const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
-    const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
-    const timeElapsed = today - TRACK_START_DATE;
-    const daysPassed = timeElapsed > 0 ? Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)) : 0;
-    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
+    const daysPassed = Math.ceil((today - TRACK_START_DATE) / (1000 * 60 * 60 * 24)); 
+    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / 353; // Approx days
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
     const actualToday = START_COUNT + totalActiveCount;
     
@@ -327,7 +325,7 @@ function App() {
     });
 
     return Object.entries(sources).map(([name, data]) => ({
-        name, active: data.active, churn: data.churn, total: data.active + data.churn,
+        name, active: data.active, churn: data.churn,
         retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
         avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
     })).sort((a,b) => b.active - a.active); 
@@ -379,8 +377,7 @@ function App() {
     let pendingExpenses = 0;
     const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: Number(firestoreData.ccBalance) || 500 }];
     bills.forEach(bill => {
-        // Simple day check for recurring bills
-        if (typeof bill.day === 'number' && bill.day > today) pendingExpenses += bill.amount;
+        if (bill.day > today) pendingExpenses += bill.amount;
     });
     return { mtdIncome, pendingExpenses };
   };
@@ -388,28 +385,28 @@ function App() {
   const cashflowStats = useMemo(calculateCashflow, [liveData, bankIncome, firestoreData.ccBalance]);
 
   const runCashflowAnalysis = async () => {
-    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading..."); return; }
+    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading or Missing (Check Debug in Settings)"); return; }
     if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
     
     setIsAnalyzing(true);
     
-    // --- STEP 1: CROSS-REFERENCE PAYMENT METHODS ---
-    const paymentMap = {}; // Name -> IsAutoPay?
+    // --- STEP 1: MATCH BY REFERENCE ---
+    const paymentMap = {}; // Ref -> IsAutoPay?
     const jobRows = liveData.jobs_raw;
     if (jobRows.length > 1) {
         const jHeaders = jobRows[0].map(h => h.toLowerCase());
-        const jNameIdx = jHeaders.findIndex(h => h.includes('name') || h.includes('reference'));
+        const jRefIdx = jHeaders.findIndex(h => h.includes('reference')); // Match by Ref
         const gcIdx = jHeaders.findIndex(h => h.includes('gocardless'));
         const stripeIdx = jHeaders.findIndex(h => h.includes('stripe'));
         
-        if (jNameIdx > -1) {
+        if (jRefIdx > -1) {
             for (let i=1; i<jobRows.length; i++) {
                 const row = jobRows[i];
-                const name = row[jNameIdx]?.trim();
-                if (name) {
+                const ref = row[jRefIdx]?.trim(); // Use Ref
+                if (ref) {
                     const isAuto = (gcIdx > -1 && row[gcIdx]?.toLowerCase().includes('active')) || 
                                    (stripeIdx > -1 && row[stripeIdx]?.toLowerCase().includes('active'));
-                    if (isAuto) paymentMap[name] = true;
+                    if (isAuto) paymentMap[ref] = true;
                 }
             }
         }
@@ -425,18 +422,20 @@ function App() {
 
     if (historyRows.length > 1) {
         const hHeaders = historyRows[0].map(h => h.toLowerCase());
-        const hNameIdx = hHeaders.findIndex(h => h.includes('name') || h.includes('customer'));
+        const hRefIdx = hHeaders.findIndex(h => h.includes('customer ref') || h.includes('reference')); // Match by Ref
         const hLastDoneIdx = hHeaders.indexOf('last done');
         const hNextDueIdx = hHeaders.indexOf('next due');
         const hPriceIdx = hHeaders.indexOf('price');
+        const hNameIdx = hHeaders.findIndex(h => h.includes('name')); // Just for display
         
-        if (hNameIdx > -1 && hPriceIdx > -1) {
+        if (hRefIdx > -1 && hPriceIdx > -1) {
             historyRows.slice(1).forEach(row => {
-                const name = row[hNameIdx]?.trim();
+                const ref = row[hRefIdx]?.trim(); // Use Ref
+                const name = row[hNameIdx] || ref;
                 const price = parseFloat(row[hPriceIdx]) || 0;
                 
                 // Only count if they have an active GoCardless/Stripe
-                if (paymentMap[name]) {
+                if (paymentMap[ref]) {
                     
                     // A. PENDING REVENUE (Jobs done in last 7 days)
                     if (hLastDoneIdx > -1) {
@@ -444,7 +443,6 @@ function App() {
                         if (lastDone) {
                             const payDate = new Date(lastDone);
                             payDate.setDate(payDate.getDate() + 7); // +7 Days rule
-                            // If payment date is in the future (or today), add it
                             if (payDate >= today && payDate <= forecastEnd) {
                                 revenueEvents.push(`PENDING: ${name} (£${price}) - Due: ${payDate.toLocaleDateString()}`);
                             }
@@ -466,10 +464,9 @@ function App() {
             });
         }
     }
-
-    // Sort events by date
-    // Note: AI handles unstructured lists well, so simple join is fine.
     
+    setDebugRevenueCount(revenueEvents.length); // Update Debug Counter
+
     const bankCSV = liveData.bank_raw.slice(0, 100).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
     const billsText = RECURRING_BILLS_TEMPLATE.map(b => `- ${b.day}th: ${b.name} (£${b.amount})`).join('\n');
@@ -483,8 +480,8 @@ function App() {
       - 6th: Credit Card (£${firestoreData.ccBalance})
 
       --- 1. PROJECTED REVENUE (Next 3 Weeks) ---
-      (I have already filtered for AutoPay customers and applied the 7-day payment lag)
-      ${revenueEvents.length > 0 ? revenueEvents.join('\n') : "No AutoPay revenue found in window."}
+      (I have filtered for AutoPay customers using Reference Number Match & applied 7-day lag)
+      ${revenueEvents.length > 0 ? revenueEvents.join('\n') : "No revenue events found (Check Ref Columns)."}
 
       --- 2. CURRENT CASH & HISTORY ---
       MTD TRANSACTIONS (CSV - Last 100):
@@ -533,7 +530,7 @@ function App() {
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
         cashflowPrompt: firestoreData.cashflowPrompt || '',
-        aiModel: firestoreData.aiModel || 'gemini-2.0-flash-exp'
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -659,6 +656,11 @@ function App() {
                 </div>
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">
                     {financeReport || "Tap 'Run Forecast' to analyze pending jobs, VAT rules, and recurring bills..."}
+                </div>
+                
+                {/* Debug Jobs Found */}
+                <div className="mt-2 text-[10px] text-slate-400 text-right">
+                    Jobs Found in Window: {debugRevenueCount}
                 </div>
             </div>
           </div>
