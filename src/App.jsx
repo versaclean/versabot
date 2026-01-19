@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, Settings, RefreshCw, Loader2, TrendingUp, AlertCircle, 
-  LogOut, Mail, Lock, UserPlus, LogIn, Bug, BarChart3, PieChart, Users, 
-  Bell, Wallet, Sparkles, CreditCard, Calendar, Cpu, Brain, Database,
-  ArrowDownRight, ArrowUpRight
+  LayoutDashboard, MessageSquare, Settings, RefreshCw, Loader2, 
+  TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Bug, 
+  BarChart3, PieChart, Users, Bell, Wallet, Sparkles, CreditCard, Calendar, 
+  Cpu, Brain, Database, ArrowDownRight, ArrowUpRight
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -178,6 +178,7 @@ function App() {
   const [analytics, setAnalytics] = useState(null);
   const [growthData, setGrowthData] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
+  const [debugInfo, setDebugInfo] = useState(null); // Fixed: Added back
   
   // Finance State
   const [bankIncome, setBankIncome] = useState(0);
@@ -327,15 +328,18 @@ function App() {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
-      if (!data.error) {
+      
+      setDebugInfo(data); // Stores raw response for Settings Debug
+
+      if (data.error) {
+        setAnalyticsError(data.error);
+      } else {
         setLiveData(data);
         if (data.marketing_raw) {
             const processed = processMarketingData(data.marketing_raw);
             setAnalytics(processed);
         }
         if (data.bank_raw) processBankData(data.bank_raw);
-      } else {
-        setAnalyticsError(data.error);
       }
       return data;
     } catch (error) { 
@@ -349,18 +353,13 @@ function App() {
   // --- CASHFLOW CALCULATION ---
   const calculateCashflow = () => {
     if (!liveData) return { mtdIncome: 0, pendingExpenses: 0 };
-    
-    // 1. MTD Bank Income (Already calculated in processBankData but good to have raw check)
     let mtdIncome = bankIncome;
-
-    // 2. Pending Expenses
     const today = new Date().getDate();
     let pendingExpenses = 0;
     const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: firestoreData.ccBalance }];
     bills.forEach(bill => {
         if (bill.day > today) pendingExpenses += bill.amount;
     });
-
     return { mtdIncome, pendingExpenses };
   };
 
@@ -372,10 +371,9 @@ function App() {
     
     setIsAnalyzing(true);
     
-    const bankCSV = liveData.bank_raw.map(row => row.join(",")).join("\n");
+    const bankCSV = liveData.bank_raw.slice(0, 300).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
     
-    // Context from Analytics
     const customerSummary = {
         totalActive: growthData?.actual || 814,
         growthTarget: growthData?.target,
@@ -386,9 +384,7 @@ function App() {
 
     const systemPrompt = `
       ROLE: Expert Financial Controller.
-      
-      TASK: 
-      ${firestoreData.cashflowPrompt}
+      TASK: ${firestoreData.cashflowPrompt}
 
       --- FINANCIAL DATA ---
       1. MONTHLY TARGET: ${targets}
@@ -531,7 +527,7 @@ function App() {
           </div>
         )}
 
-        {/* FINANCE TAB */}
+        {/* CASHFLOW TAB */}
         {activeTab === 'finance' && (
           <div className="space-y-6">
             <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg">
