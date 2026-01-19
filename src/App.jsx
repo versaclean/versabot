@@ -43,6 +43,37 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
+const DAILY_ROUTINE = [
+  {
+    title: '☀️ Morning Kickoff',
+    timeBlock: 'morning',
+    notifyAt: '09:30',
+    items: [
+      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
+      { id: 'm_team', label: 'Go see team (get photo/video)' }
+    ]
+  },
+  {
+    title: '☕ Midday Check-in',
+    timeBlock: 'midday',
+    notifyAt: '12:30',
+    items: [
+      { id: 'mid_texts', label: 'Check texts for updates' },
+      { id: 'mid_va', label: 'Check items from VA' }
+    ]
+  },
+  {
+    title: '🌙 Close Down',
+    timeBlock: 'evening',
+    notifyAt: '16:00',
+    items: [
+      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
+      { id: 'close_texts', label: 'Check text messages' },
+      { id: 'close_va', label: 'Check VA messages' }
+    ]
+  }
+];
+
 const RECURRING_BILLS_TEMPLATE = [
   { day: 2, name: 'DVLA Tax', amount: 90.54 },
   { day: 6, name: 'Admiral Insurance', amount: 364.47 },
@@ -213,7 +244,13 @@ function App() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (!data.gasUrl) data.gasUrl = '';
-        setFirestoreData(prev => ({ ...prev, ...data })); 
+        setFirestoreData(prev => ({ 
+          ...prev, 
+          ...data,
+          // Ensure defaults if fields missing
+          aiModel: data.aiModel || 'gemini-1.5-flash',
+          ccBalance: data.ccBalance || 0
+        })); 
       } else {
         setDoc(docRef, {
           gasUrl: '',
@@ -231,25 +268,14 @@ function App() {
   // --- ROBUST DATE PARSER (YYYY-MM-DD or DD/MM/YYYY) ---
   const parseSheetDate = (dateStr) => {
     if (!dateStr) return null;
-    
-    // 1. Handle YYYY-MM-DD (e.g., 2026-02-06)
     if (dateStr.includes('-')) {
         const parts = dateStr.split('-');
-        if (parts.length === 3) {
-            // new Date(Year, MonthIndex, Day) -> Avoids timezone offset issues of parse()
-            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-        }
+        if (parts.length === 3) return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     }
-    
-    // 2. Handle DD/MM/YYYY (Legacy backup)
     if (dateStr.includes('/')) {
         const parts = dateStr.split('/');
-        if (parts.length === 3) {
-            return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-        }
+        if (parts.length === 3) return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
     }
-    
-    // 3. Fallback
     const d = new Date(dateStr);
     return isNaN(d.getTime()) ? null : d;
   };
@@ -283,11 +309,7 @@ function App() {
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
-        
-        // Parse using robust YYYY-MM-DD logic
         const createdDate = parseSheetDate(row[idx.created]);
-
-        // Filter: Ignore pre-2026
         if (!createdDate || createdDate < TRACK_START_DATE) continue; 
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
@@ -321,7 +343,6 @@ function App() {
     const END_COUNT = 1600;
     const TRACK_END_DATE = new Date(2026, 11, 31);
     const today = new Date();
-    
     const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
     const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
     const timeElapsed = today - TRACK_START_DATE;
@@ -388,7 +409,7 @@ function App() {
     let mtdIncome = bankIncome;
     const today = new Date().getDate();
     let pendingExpenses = 0;
-    const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: firestoreData.ccBalance }];
+    const bills = [...RECURRING_BILLS_TEMPLATE, { day: 6, name: 'Credit Card', amount: Number(firestoreData.ccBalance) || 500 }];
     bills.forEach(bill => {
         if (bill.day > today) pendingExpenses += bill.amount;
     });
@@ -398,14 +419,21 @@ function App() {
   const cashflowStats = useMemo(calculateCashflow, [liveData, bankIncome, firestoreData.ccBalance]);
 
   const runCashflowAnalysis = async () => {
-    if (!liveData?.bank_raw) { alert("No Bank Data Loaded"); return; }
+    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading or Missing (Check Debug in Settings)"); return; }
     if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
     
     setIsAnalyzing(true);
     
+    // OPTIMIZED DATA SLICING FOR SPEED
     const bankCSV = liveData.bank_raw.slice(0, 150).map(row => row.join(",")).join("\n");
+    // Sheet3: Payment Methods
     const jobsCSV = liveData.jobs_raw.slice(0, 300).map(row => row.join(",")).join("\n");
+    // Sheet2: Schedule/Dates
+    const scheduleCSV = liveData.marketing_raw.slice(0, 300).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
+    
+    // Create text string for bills to pass explicitly to AI
+    const billsText = RECURRING_BILLS_TEMPLATE.map(b => `- ${b.day}th: ${b.name} (£${b.amount})`).join('\n');
     
     const customerSummary = {
         totalActive: growthData?.actual || 814,
@@ -419,11 +447,19 @@ function App() {
       ROLE: Expert Financial Controller.
       TASK: ${firestoreData.cashflowPrompt}
 
+      --- RECURRING BILLS LIST ---
+      ${billsText}
+      - 6th: Credit Card (£${firestoreData.ccBalance})
+
       --- FINANCIAL DATA ---
       1. MONTHLY TARGET: ${targets}
       2. MTD TRANSACTIONS (CSV - Last 150):
       ${bankCSV}
-      3. ACTIVE JOBS (CSV - Next 300 due):
+      
+      --- REVENUE FORECASTING DATA ---
+      3. SHEET2_SCHEDULE (Dates & State):
+      ${scheduleCSV}
+      4. SHEET3_PAYMENTS (Payment Methods):
       ${jobsCSV}
       
       --- BUSINESS HEALTH ---
@@ -438,7 +474,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-2.0-flash-exp'}:generateContent?key=${GEMINI_API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-1.5-flash'}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -472,7 +508,7 @@ function App() {
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
         cashflowPrompt: firestoreData.cashflowPrompt || '',
-        aiModel: firestoreData.aiModel || 'gemini-2.0-flash-exp'
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -627,7 +663,7 @@ function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label>
-                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-2.0-flash-exp" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
+                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
               </div>
 
               <div>
