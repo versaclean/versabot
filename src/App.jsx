@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
+  LayoutDashboard, MessageSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
-  Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug, Plus, Trash2
+  Database, BarChart3, PieChart, Users, Bell, Bug, Wallet, Banknote, Sparkles
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -25,6 +24,7 @@ const firebaseConfig = {
 };
 
 const GAS_TOKEN = import.meta.env.VITE_GAS_TOKEN;
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const APP_ID = 'versabot-pwa-v1';
 
 let app, auth, db;
@@ -42,36 +42,7 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
-const DAILY_ROUTINE = [
-  {
-    title: '☀️ Morning Kickoff',
-    timeBlock: 'morning',
-    notifyAt: '09:30',
-    items: [
-      { id: 'm_texts', label: 'Check morning texts (skips/pricing)' },
-      { id: 'm_team', label: 'Go see team (get photo/video)' }
-    ]
-  },
-  {
-    title: '☕ Midday Check-in',
-    timeBlock: 'midday',
-    notifyAt: '12:30',
-    items: [
-      { id: 'mid_texts', label: 'Check texts for updates' },
-      { id: 'mid_va', label: 'Check items from VA' }
-    ]
-  },
-  {
-    title: '🌙 Close Down',
-    timeBlock: 'evening',
-    notifyAt: '16:00',
-    items: [
-      { id: 'close_schedule', label: 'Schedule & book tomorrow\'s jobs' },
-      { id: 'close_texts', label: 'Check text messages' },
-      { id: 'close_va', label: 'Check VA messages' }
-    ]
-  }
-];
+const DAILY_ROUTINE = []; // Removed per request, logic kept for compatibility
 
 // --- COMPONENTS ---
 
@@ -194,12 +165,17 @@ function App() {
   const [growthData, setGrowthData] = useState(null);
   const [analyticsError, setAnalyticsError] = useState(null);
   const [debugInfo, setDebugInfo] = useState(null); 
+  
+  // Finance State
+  const [bankIncome, setBankIncome] = useState(0);
+  const [financeReport, setFinanceReport] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
-    routine: { lastReset: '' }, 
-    adhocTasks: [],
+    cashflowPrompt: '', // User's specific prompt
+    aiModel: 'gemini-1.5-flash'
   });
 
   useEffect(() => {
@@ -223,12 +199,13 @@ function App() {
         if (!data.gasUrl) data.gasUrl = '';
         setFirestoreData(prev => ({ ...prev, ...data })); 
       } else {
-        // Init User
         setDoc(docRef, {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
+          cashflowPrompt: '',
+          aiModel: 'gemini-1.5-flash'
         });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 } });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, cashflowPrompt: '', aiModel: 'gemini-1.5-flash' });
       }
     });
     return () => unsubscribeSnapshot();
@@ -237,10 +214,7 @@ function App() {
   // --- ANALYTICS PROCESSING ---
   const processMarketingData = (rawData) => {
     if (!rawData || rawData.length < 2) return null;
-
     const headers = rawData[0].map(h => h.toString().toLowerCase().trim());
-    
-    // Fuzzy match for headers
     const idx = {
         source: headers.indexOf('source'),
         created: headers.indexOf('created'),
@@ -262,18 +236,12 @@ function App() {
     sources['Other'] = { active: 0, churn: 0, lifespans: [] };
     
     let totalActiveCount = 0; 
-    
-    // Growth Parameters
     const TRACK_START_DATE = new Date('2026-01-12');
 
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
-        
-        // DATE FILTER: Created >= Jan 12, 2026
         const createdDate = new Date(row[idx.created]);
-        if (isNaN(createdDate) || createdDate < TRACK_START_DATE) {
-            continue; 
-        }
+        if (isNaN(createdDate) || createdDate < TRACK_START_DATE) continue; 
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
         const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
@@ -302,25 +270,16 @@ function App() {
         }
     }
 
-    // --- GROWTH TRACKER LOGIC ---
     const START_COUNT = 814;
     const END_COUNT = 1600;
     const TRACK_END_DATE = new Date('2026-12-31');
     const today = new Date();
-    
-    // Calculate total days for the goal (Jan 12 - Dec 31)
     const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
     const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
-
-    // Calculate days passed since start
     const timeElapsed = today - TRACK_START_DATE;
     const daysPassed = timeElapsed > 0 ? Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)) : 0;
-    
-    // Linear Growth Calculation
     const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
-    
-    // Actual = Baseline + New Actives (Created >= Jan 12)
     const actualToday = START_COUNT + totalActiveCount;
     
     setGrowthData({
@@ -331,13 +290,25 @@ function App() {
     });
 
     return Object.entries(sources).map(([name, data]) => ({
-        name,
-        active: data.active,
-        churn: data.churn,
-        total: data.active + data.churn,
+        name, active: data.active, churn: data.churn, total: data.active + data.churn,
         retentionRate: data.active + data.churn > 0 ? Math.round((data.active / (data.active + data.churn)) * 100) : 0,
         avgLifetime: data.lifespans.length > 0 ? Math.round(data.lifespans.reduce((a,b) => a+b, 0) / data.lifespans.length) : 0
     })).sort((a,b) => b.active - a.active); 
+  };
+
+  const processBankData = (bankRows) => {
+    if(!bankRows || bankRows.length < 2) return 0;
+    // Assume Header [Date, Amount, Name, Ref, Status]
+    // Index 1 is Amount.
+    let mtdIncome = 0;
+    // Skip header
+    for(let i=1; i<bankRows.length; i++) {
+        const amount = parseFloat(bankRows[i][1]);
+        if(!isNaN(amount) && amount > 0) { // Only count income
+            mtdIncome += amount;
+        }
+    }
+    setBankIncome(mtdIncome);
   };
 
   const fetchLiveData = async () => {
@@ -357,6 +328,9 @@ function App() {
             const processed = processMarketingData(data.marketing_raw);
             setAnalytics(processed);
         }
+        if (data.bank_raw) {
+            processBankData(data.bank_raw);
+        }
       }
       return data;
     } catch (error) { 
@@ -366,6 +340,58 @@ function App() {
   };
 
   useEffect(() => { if (firestoreData.gasUrl) fetchLiveData(); }, [firestoreData.gasUrl]);
+
+  // --- AI CASHFLOW ANALYSIS ---
+  const runCashflowAnalysis = async () => {
+    if (!liveData?.bank_raw) { alert("No Bank Data Loaded"); return; }
+    if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
+    
+    setIsAnalyzing(true);
+    
+    // Format Bank Data as CSV string for the AI
+    const bankCSV = liveData.bank_raw.map(row => row.join(",")).join("\n");
+    const targets = JSON.stringify(firestoreData.targets);
+
+    const systemPrompt = `
+      ROLE: You are an expert Financial Controller for a Window Cleaning Business.
+      
+      TASK: 
+      ${firestoreData.cashflowPrompt}
+
+      DATA CONTEXT:
+      1. MONTHLY TARGET: ${targets}
+      2. MTD BANK TRANSACTIONS (CSV Format: Date, Amount, Name, Ref, Status):
+      ${bankCSV}
+      
+      OUTPUT FORMAT:
+      - Plain text summary.
+      - Use bullet points for issues.
+      - Be direct and concise.
+      - Currency: GBP (£).
+    `;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${firestoreData.aiModel || 'gemini-1.5-flash'}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+        }
+      );
+      const data = await response.json();
+      if(data.error) {
+          setFinanceReport("Error: " + data.error.message);
+      } else {
+          setFinanceReport(data.candidates?.[0]?.content?.parts?.[0]?.text || "No analysis generated.");
+      }
+    } catch (e) {
+        setFinanceReport("Connection Error: " + e.message);
+    } finally {
+        setIsAnalyzing(false);
+    }
+  };
+
 
   // --- HANDLERS ---
   const handleSignOut = () => auth && signOut(auth).catch(e => console.error(e));
@@ -378,6 +404,8 @@ function App() {
         gasUrl: firestoreData.gasUrl,
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
+        cashflowPrompt: firestoreData.cashflowPrompt || '',
+        aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
     try { await updateDoc(docRef, updates); alert('Settings Saved'); fetchLiveData(); } 
     catch(err) { await setDoc(docRef, updates, { merge: true }); alert('Settings Saved'); fetchLiveData(); }
@@ -415,7 +443,7 @@ function App() {
           <div className="space-y-6">
              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-lg">
                 <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><BarChart3 className="w-5 h-5 text-blue-400" /> Marketing Analytics</h2>
-                <p className="text-xs opacity-70">2026 Onwards (Since Jan 12). Active = Empty Job State.</p>
+                <p className="text-xs opacity-70">2026 Onwards. Active = Empty Job State.</p>
              </div>
 
              {analyticsError ? (
@@ -466,6 +494,48 @@ function App() {
           </div>
         )}
 
+        {/* FINANCE TAB */}
+        {activeTab === 'finance' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg">
+                <h2 className="font-bold text-lg mb-1 flex items-center gap-2"><Wallet className="w-5 h-5 text-green-400" /> Cashflow Controller</h2>
+                <div className="mt-4 flex items-end justify-between">
+                   <div>
+                       <p className="text-xs text-slate-400 uppercase font-bold">Real-time Income (MTD)</p>
+                       <p className="text-3xl font-bold text-white mt-1">{fmt(bankIncome)}</p>
+                   </div>
+                   <div className="text-right">
+                       <p className="text-xs text-slate-400">Target</p>
+                       <p className="text-sm font-medium">{fmt(firestoreData.targets.monthly)}</p>
+                   </div>
+                </div>
+                {/* Progress Bar within Card */}
+                <div className="mt-4 h-2 bg-slate-700 rounded-full overflow-hidden">
+                   <div className="h-full bg-green-500" style={{ width: `${Math.min(100, (bankIncome / firestoreData.targets.monthly) * 100)}%` }}></div>
+                </div>
+            </div>
+
+            {/* AI Analysis Section */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                <div className="flex justify-between items-center mb-4">
+                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-600" /> Forecast & Issues</h3>
+                   <button 
+                      onClick={runCashflowAnalysis} 
+                      disabled={isAnalyzing}
+                      className="bg-purple-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold disabled:opacity-50 flex items-center gap-2"
+                   >
+                      {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      {isAnalyzing ? "Analyzing..." : "Run Forecast"}
+                   </button>
+                </div>
+                
+                <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">
+                    {financeReport || "Click 'Run Forecast' to let the AI analyze your bank data..."}
+                </div>
+            </div>
+          </div>
+        )}
+
         {/* SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-4">
@@ -474,6 +544,21 @@ function App() {
               <div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Google Apps Script URL</label><input value={firestoreData.gasUrl} onChange={(e) => setFirestoreData({...firestoreData, gasUrl: e.target.value})} placeholder="https://script.google.com/..." className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div>
               <div className="grid grid-cols-2 gap-4"><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Monthly Target (£)</label><input type="number" value={firestoreData.targets.monthly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, monthly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div><div><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Weekly Target (£)</label><input type="number" value={firestoreData.targets.weekly} onChange={(e) => setFirestoreData({...firestoreData, targets: {...firestoreData.targets, weekly: e.target.value}})} className="w-full p-3 rounded-lg border border-slate-200 text-sm" /></div></div>
               
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Cpu className="w-4 h-4" /> AI Model ID</label>
+                <input value={firestoreData.aiModel} onChange={(e) => setFirestoreData({...firestoreData, aiModel: e.target.value})} placeholder="gemini-1.5-flash" className="w-full p-3 rounded-lg border border-slate-200 text-sm" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1 flex items-center gap-1"><Banknote className="w-4 h-4" /> Cashflow Logic / Prompt</label>
+                <textarea 
+                  value={firestoreData.cashflowPrompt} 
+                  onChange={(e) => setFirestoreData({...firestoreData, cashflowPrompt: e.target.value})}
+                  placeholder="Paste your instructions for the Financial Controller AI here..."
+                  className="w-full p-3 rounded-lg border border-slate-200 text-sm h-32 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                />
+              </div>
+
               <div className="bg-slate-100 p-4 rounded-lg overflow-hidden">
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><Bug className="w-4 h-4" /> Connection Debug</label>
                 <p className="text-[10px] text-slate-500 font-mono break-all">
@@ -481,9 +566,6 @@ function App() {
                    debugInfo?.marketing_raw ? `Connected. Columns: ${JSON.stringify(debugInfo.marketing_raw[0])}` : 
                    "No Data. Check URL."}
                 </p>
-                {debugInfo?.available_tabs && (
-                   <p className="text-[10px] text-red-500 font-mono mt-1">Available Tabs: {JSON.stringify(debugInfo.available_tabs)}</p>
-                )}
               </div>
 
               <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-lg font-semibold hover:bg-slate-800 transition-colors">Save Settings</button>
@@ -496,10 +578,10 @@ function App() {
         {[
           { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
           { id: 'marketing', icon: BarChart3, label: 'Analytics' }, 
+          { id: 'finance', icon: Wallet, label: 'Finance' }, 
           { id: 'settings', icon: Settings, label: 'Settings' }
         ].map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 transition-colors ${activeTab === item.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'} relative`}>
-            {item.badge && <span className="absolute top-2 right-4 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
             <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'fill-current opacity-20' : ''}`} strokeWidth={activeTab === item.id ? 2.5 : 2} />
             <span className="text-[10px] font-medium">{item.label}</span>
           </button>
