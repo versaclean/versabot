@@ -3,7 +3,8 @@ import {
   LayoutDashboard, MessageSquare, CheckSquare, Settings, RefreshCw, Loader2, 
   TrendingUp, AlertCircle, LogOut, Mail, Lock, UserPlus, LogIn, Brain, Cpu, 
   Database, BarChart3, PieChart, Users, Clock, ArrowDownRight, ArrowUpRight, Bell,
-  Bug, Plus, Trash2, Wallet, Sparkles, CreditCard, Calendar, CheckCircle2, XCircle
+  Bug, Plus, Trash2, Wallet, Sparkles, CreditCard, Calendar, CheckCircle2, XCircle,
+  PoundSterling
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -43,6 +44,8 @@ if (firebaseConfig.apiKey) {
 }
 
 // --- CONSTANTS ---
+const DAILY_ROUTINE = []; 
+
 const RECURRING_BILLS_TEMPLATE = [
   { day: 2, name: 'DVLA Tax', amount: 90.54 },
   { day: 6, name: 'Admiral Insurance', amount: 364.47 },
@@ -185,12 +188,12 @@ function App() {
   const [bankIncome, setBankIncome] = useState(0);
   const [financeReport, setFinanceReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [debugRevenueCount, setDebugRevenueCount] = useState(0); // Debug how many jobs found
 
   const [firestoreData, setFirestoreData] = useState({
     gasUrl: '',
     targets: { monthly: 20000, weekly: 5000 },
     ccBalance: 500,
+    bankBalance: 0, // NEW: Manual Bank Balance Input
     cashflowPrompt: '',
     aiModel: 'gemini-1.5-flash'
   });
@@ -217,24 +220,27 @@ function App() {
         setFirestoreData(prev => ({ 
           ...prev, 
           ...data,
+          // Defaults
           aiModel: data.aiModel || 'gemini-1.5-flash',
-          ccBalance: data.ccBalance || 0
+          ccBalance: data.ccBalance || 500,
+          bankBalance: data.bankBalance || 0
         })); 
       } else {
         setDoc(docRef, {
           gasUrl: '',
           targets: { monthly: 20000, weekly: 5000 },
           ccBalance: 500,
+          bankBalance: 0,
           cashflowPrompt: '',
           aiModel: 'gemini-1.5-flash'
         });
-        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, cashflowPrompt: '', aiModel: 'gemini-1.5-flash' });
+        setFirestoreData({ gasUrl: '', targets: { monthly: 20000, weekly: 5000 }, ccBalance: 500, bankBalance: 0, cashflowPrompt: '', aiModel: 'gemini-1.5-flash' });
       }
     });
     return () => unsubscribeSnapshot();
   }, [user]);
 
-  // --- ROBUST DATE PARSER (YYYY-MM-DD or DD/MM/YYYY) ---
+  // --- ROBUST DATE PARSER ---
   const parseSheetDate = (dateStr) => {
     if (!dateStr) return null;
     if (dateStr.includes('-')) {
@@ -279,16 +285,14 @@ function App() {
     for (let i = 1; i < rawData.length; i++) {
         const row = rawData[i];
         const createdDate = parseSheetDate(row[idx.created]);
-        if (!createdDate || createdDate < TRACK_START_DATE) continue; 
+        if (isNaN(createdDate) || createdDate < TRACK_START_DATE) continue; 
 
         const rawSource = row[idx.source]?.toString().trim() || 'Other';
         const sourceKey = validSources.find(s => s.toLowerCase() === rawSource.toLowerCase()) || 'Other';
-        
         const state = row[idx.state]?.toString().trim().toLowerCase() || '';
         const jobState = row[idx.jobState]?.toString().trim().toLowerCase() || '';
         const service = row[idx.service]?.toString().toLowerCase() || '';
         const freq = row[idx.freq]?.toString().toLowerCase() || '';
-
         const isWindowCleaning = service.includes('window cleaning'); 
         const isValidFreq = freq.includes('4') || freq.includes('8');
 
@@ -312,8 +316,11 @@ function App() {
     const END_COUNT = 1600;
     const TRACK_END_DATE = new Date(2026, 11, 31);
     const today = new Date();
-    const daysPassed = Math.ceil((today - TRACK_START_DATE) / (1000 * 60 * 60 * 24)); 
-    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / 353; // Approx days
+    const totalDuration = TRACK_END_DATE - TRACK_START_DATE;
+    const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
+    const timeElapsed = today - TRACK_START_DATE;
+    const daysPassed = timeElapsed > 0 ? Math.ceil(timeElapsed / (1000 * 60 * 60 * 24)) : 0;
+    const dailyGrowthNeeded = (END_COUNT - START_COUNT) / totalDays;
     const targetToday = Math.floor(START_COUNT + (daysPassed * dailyGrowthNeeded));
     const actualToday = START_COUNT + totalActiveCount;
     
@@ -347,9 +354,7 @@ function App() {
       const secureUrl = `${firestoreData.gasUrl}?token=${GAS_TOKEN}`;
       const res = await fetch(secureUrl);
       const data = await res.json();
-      
       setDebugInfo(data);
-
       if (data.error) {
         setAnalyticsError(data.error);
       } else {
@@ -385,24 +390,23 @@ function App() {
   const cashflowStats = useMemo(calculateCashflow, [liveData, bankIncome, firestoreData.ccBalance]);
 
   const runCashflowAnalysis = async () => {
-    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading or Missing (Check Debug in Settings)"); return; }
-    if (!firestoreData.cashflowPrompt) { alert("Please set a Prompt in Settings first."); return; }
+    if (!liveData?.bank_raw || !liveData?.marketing_raw || !liveData?.jobs_raw) { alert("Data Loading..."); return; }
     
     setIsAnalyzing(true);
     
     // --- STEP 1: MATCH BY REFERENCE ---
-    const paymentMap = {}; // Ref -> IsAutoPay?
+    const paymentMap = {}; 
     const jobRows = liveData.jobs_raw;
     if (jobRows.length > 1) {
         const jHeaders = jobRows[0].map(h => h.toLowerCase());
-        const jRefIdx = jHeaders.findIndex(h => h.includes('reference')); // Match by Ref
+        const jRefIdx = jHeaders.findIndex(h => h.includes('reference'));
         const gcIdx = jHeaders.findIndex(h => h.includes('gocardless'));
         const stripeIdx = jHeaders.findIndex(h => h.includes('stripe'));
         
         if (jRefIdx > -1) {
             for (let i=1; i<jobRows.length; i++) {
                 const row = jobRows[i];
-                const ref = row[jRefIdx]?.trim(); // Use Ref
+                const ref = row[jRefIdx]?.trim();
                 if (ref) {
                     const isAuto = (gcIdx > -1 && row[gcIdx]?.toLowerCase().includes('active')) || 
                                    (stripeIdx > -1 && row[stripeIdx]?.toLowerCase().includes('active'));
@@ -415,46 +419,43 @@ function App() {
     // --- STEP 2: CALCULATE FORECAST (7-Day Lag Rule) ---
     const today = new Date();
     const forecastEnd = new Date();
-    forecastEnd.setDate(today.getDate() + 21); // 3 Weeks Ahead
+    forecastEnd.setDate(today.getDate() + 21); // 3 Weeks
 
     const historyRows = liveData.marketing_raw;
     const revenueEvents = [];
 
     if (historyRows.length > 1) {
         const hHeaders = historyRows[0].map(h => h.toLowerCase());
-        const hRefIdx = hHeaders.findIndex(h => h.includes('customer ref') || h.includes('reference')); // Match by Ref
+        const hRefIdx = hHeaders.findIndex(h => h.includes('customer ref') || h.includes('reference'));
         const hLastDoneIdx = hHeaders.indexOf('last done');
         const hNextDueIdx = hHeaders.indexOf('next due');
         const hPriceIdx = hHeaders.indexOf('price');
-        const hNameIdx = hHeaders.findIndex(h => h.includes('name')); // Just for display
+        const hNameIdx = hHeaders.findIndex(h => h.includes('name')); 
         
         if (hRefIdx > -1 && hPriceIdx > -1) {
             historyRows.slice(1).forEach(row => {
-                const ref = row[hRefIdx]?.trim(); // Use Ref
+                const ref = row[hRefIdx]?.trim(); 
                 const name = row[hNameIdx] || ref;
                 const price = parseFloat(row[hPriceIdx]) || 0;
                 
-                // Only count if they have an active GoCardless/Stripe
                 if (paymentMap[ref]) {
-                    
-                    // A. PENDING REVENUE (Jobs done in last 7 days)
+                    // A. PENDING REVENUE
                     if (hLastDoneIdx > -1) {
                         const lastDone = parseSheetDate(row[hLastDoneIdx]);
                         if (lastDone) {
                             const payDate = new Date(lastDone);
-                            payDate.setDate(payDate.getDate() + 7); // +7 Days rule
+                            payDate.setDate(payDate.getDate() + 7);
                             if (payDate >= today && payDate <= forecastEnd) {
                                 revenueEvents.push(`PENDING: ${name} (£${price}) - Due: ${payDate.toLocaleDateString()}`);
                             }
                         }
                     }
-
-                    // B. FUTURE REVENUE (Jobs due in next 2 weeks)
+                    // B. FUTURE REVENUE
                     if (hNextDueIdx > -1) {
                         const nextDue = parseSheetDate(row[hNextDueIdx]);
                         if (nextDue) {
                             const payDate = new Date(nextDue);
-                            payDate.setDate(payDate.getDate() + 7); // +7 Days rule
+                            payDate.setDate(payDate.getDate() + 7); 
                             if (payDate >= today && payDate <= forecastEnd) {
                                 revenueEvents.push(`FORECAST: ${name} (£${price}) - Est. Pay: ${payDate.toLocaleDateString()}`);
                             }
@@ -465,33 +466,42 @@ function App() {
         }
     }
     
-    setDebugRevenueCount(revenueEvents.length); // Update Debug Counter
-
     const bankCSV = liveData.bank_raw.slice(0, 100).map(row => row.join(",")).join("\n");
     const targets = JSON.stringify(firestoreData.targets);
     const billsText = RECURRING_BILLS_TEMPLATE.map(b => `- ${b.day}th: ${b.name} (£${b.amount})`).join('\n');
     
+    // UPDATED PROMPT: Weekly Breakdown & Balance Logic
     const systemPrompt = `
       ROLE: Expert Financial Controller.
-      TASK: ${firestoreData.cashflowPrompt}
+      TASK: ${firestoreData.cashflowPrompt || "Forecast Cashflow."}
+
+      --- CASH POSITION ---
+      STARTING BALANCE: £${firestoreData.bankBalance} (As entered by user)
+      REAL-TIME MTD INCOME: £${bankIncome.toFixed(2)}
 
       --- RECURRING BILLS ---
       ${billsText}
       - 6th: Credit Card (£${firestoreData.ccBalance})
 
       --- 1. PROJECTED REVENUE (Next 3 Weeks) ---
-      (I have filtered for AutoPay customers using Reference Number Match & applied 7-day lag)
-      ${revenueEvents.length > 0 ? revenueEvents.join('\n') : "No revenue events found (Check Ref Columns)."}
+      (Filtered AutoPay + 7-Day Lag Applied):
+      ${revenueEvents.length > 0 ? revenueEvents.join('\n') : "No AutoPay revenue found."}
 
-      --- 2. CURRENT CASH & HISTORY ---
-      MTD TRANSACTIONS (CSV - Last 100):
+      --- 2. HISTORY ---
+      MTD TRANSACTIONS (Last 100):
       ${bankCSV}
       
       OUTPUT FORMAT:
-      - Start with: "PROJECTED REVENUE: £[Sum of list above minus 18% VAT]"
-      - Then: "COMMITTED SPEND: £[Sum of bills due in window]"
-      - Final Verdict: 🟢 SAFE or 🔴 DANGER.
-      - Use bullet points.
+      1. WEEKLY BREAKDOWN (Next 3 Weeks):
+         - Week 1: Projected Income vs Bills. Net Movement.
+         - Week 2: ...
+         - Week 3: ...
+      2. END OF MONTH SUMMARY:
+         - Projected Bank Balance on 31st.
+         - "ON TRACK" or "BEHIND" Target (£${firestoreData.targets.monthly}).
+      3. VERDICT:
+         - 🟢 SAFE or 🔴 DANGER.
+         - 1 Actionable Tip.
     `;
 
     try {
@@ -529,6 +539,7 @@ function App() {
         'targets.monthly': Number(firestoreData.targets.monthly),
         'targets.weekly': Number(firestoreData.targets.weekly),
         ccBalance: Number(firestoreData.ccBalance),
+        bankBalance: Number(firestoreData.bankBalance), // SAVE BANK BALANCE
         cashflowPrompt: firestoreData.cashflowPrompt || '',
         aiModel: firestoreData.aiModel || 'gemini-1.5-flash'
     };
@@ -626,17 +637,25 @@ function App() {
                 <div className="flex justify-between items-start mb-4">
                     <div>
                         <h2 className="font-bold text-lg flex items-center gap-2"><Wallet className="w-5 h-5 text-green-400" /> Live Position</h2>
-                        <p className="text-xs text-slate-400">Month to Date (Starling)</p>
+                        <p className="text-xs text-slate-400">Current Balance + MTD</p>
                     </div>
                 </div>
                 <div className="flex items-end justify-between">
                    <div>
-                       <p className="text-3xl font-bold text-white">{fmt(cashflowStats.mtdIncome)}</p>
-                       <p className="text-xs text-slate-400 mt-1">Incoming</p>
+                       {/* Show User Balance if set, else MTD */}
+                       <p className="text-3xl font-bold text-white">{fmt(firestoreData.bankBalance || bankIncome)}</p>
+                       <p className="text-xs text-slate-400 mt-1">Available Funds</p>
                    </div>
                    <div className="text-right">
-                       <p className="text-xl font-bold text-red-400">-{fmt(cashflowStats.pendingExpenses)}</p>
-                       <p className="text-xs text-slate-400 mt-1">Est. Bills Remaining</p>
+                       <input 
+                         type="number" 
+                         value={firestoreData.bankBalance} 
+                         onChange={(e) => setFirestoreData({...firestoreData, bankBalance: e.target.value})}
+                         onBlur={handleSettingsSave}
+                         className="w-20 p-1 rounded bg-slate-800 text-white text-right text-sm border border-slate-700"
+                         placeholder="Update Bal"
+                       />
+                       <p className="text-[9px] text-slate-500 mt-1">Tap to Update</p>
                    </div>
                 </div>
             </div>
@@ -656,11 +675,6 @@ function App() {
                 </div>
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-700 min-h-[150px] whitespace-pre-wrap leading-relaxed border border-slate-100">
                     {financeReport || "Tap 'Run Forecast' to analyze pending jobs, VAT rules, and recurring bills..."}
-                </div>
-                
-                {/* Debug Jobs Found */}
-                <div className="mt-2 text-[10px] text-slate-400 text-right">
-                    Jobs Found in Window: {debugRevenueCount}
                 </div>
             </div>
           </div>
@@ -685,7 +699,19 @@ function App() {
                       className="w-full p-2 rounded border border-slate-200 text-sm"
                     />
                  </div>
-                 <p className="text-[10px] text-slate-400 mt-2">Update this monthly for accurate forecasting.</p>
+              </div>
+              
+              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-2 flex items-center gap-2"><PoundSterling className="w-4 h-4" /> Current Bank Balance</label>
+                 <div className="flex items-center gap-2">
+                    <span className="text-slate-400">£</span>
+                    <input 
+                      type="number" 
+                      value={firestoreData.bankBalance} 
+                      onChange={(e) => setFirestoreData({...firestoreData, bankBalance: e.target.value})}
+                      className="w-full p-2 rounded border border-slate-200 text-sm"
+                    />
+                 </div>
               </div>
 
               <div>
